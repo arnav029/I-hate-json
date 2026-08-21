@@ -7,8 +7,16 @@ The server in this repo only hands over static files.
 
 ## Modules
 
-A slim rail on the left switches modules; the input panel is shared, so what you
-pasted survives the switch. **Formatter** is what loads on `/`.
+Each tool is its own URL so it can be found, linked and indexed on its own terms.
+A slim rail on the left links between them, and what you pasted is carried across
+through `sessionStorage` (capped at 100KB; files are never persisted).
+
+| URL | Module |
+| --- | --- |
+| `/` | Formatter |
+| `/json-to-csv` | CSV |
+| `/json-minifier` | Minify |
+| `/json-diff` | Diff |
 
 | Module | Does |
 | --- | --- |
@@ -78,7 +86,8 @@ public/           everything the browser gets
   formatter.js    pure parse/format/highlight core (no DOM — testable in Node)
   csv.js          pure JSON -> CSV core (no DOM)
   diff.js         pure structural diff core (no DOM)
-server.js         zero-dependency static file server (Railway needs a listener on $PORT)
+routes.js         per-route metadata and page copy (server-side only)
+server.js         zero-dependency static server + per-route rendering
 test/             Node tests for every core, incl. multi-MB fixtures
 ```
 
@@ -90,6 +99,19 @@ npm test           # every core, ~15s (builds multi-MB fixtures)
 ```
 
 No build step and no dependencies — `public/` can also be opened through any static server.
+
+## SEO
+
+`server.js` substitutes per-route values from `routes.js` into `public/index.html`:
+title, meta description, `<h1>`, canonical, Open Graph and Twitter tags,
+`SoftwareApplication` + `FAQPage` JSON-LD, and 300+ words of page copy with an FAQ.
+`/robots.txt` and `/sitemap.xml` are generated from the same table, so adding a route
+updates everything at once.
+
+Duplicate URLs (`/json-formatter`, `/index.html`, trailing slashes) 301 to the canonical
+path. `SITE_ORIGIN` sets the origin used in canonical tags and the sitemap
+(default `https://www.ihatejson.com`). Set `CANONICAL_HOST` to also 301 every other host
+to one — off by default so localhost and preview deploys work.
 
 ## Deploy on Railway
 

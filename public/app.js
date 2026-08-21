@@ -32,7 +32,6 @@
     placeholder: $('output-placeholder'),
     placeholderText: $('placeholder-text'),
     placeholderSub: $('placeholder-sub'),
-    tagline: $('brand-tagline'),
     errorBox: $('error-box'),
     errorTitle: $('error-title'),
     errorMessage: $('error-message'),
@@ -59,7 +58,7 @@
   };
 
   var state = {
-    module: 'formatter',
+    module: document.body.getAttribute('data-module') || 'formatter',
     pendingFile: null,   // a File too big to show in the textarea
     output: '',          // full result text, the source of truth for copy/download
     sourceName: '',      // original file name, used to suggest a download name
@@ -283,35 +282,18 @@
     return MODULES[state.module];
   }
 
-  function selectModule(name) {
-    if (!MODULES[name] || state.module === name) return;
-
-    state.module = name;
+  function applyModule() {
     var module = current();
-
-    Array.prototype.forEach.call(el.rail.querySelectorAll('[data-module]'), function (item) {
-      var active = item.getAttribute('data-module') === name;
-      item.classList.toggle('is-active', active);
-      if (active) item.setAttribute('aria-current', 'page');
-      else item.removeAttribute('aria-current');
-    });
 
     el.outputTitle.textContent = module.title;
     el.formatBtnLabel.textContent = module.action;
     el.downloadBtn.textContent = module.download;
-    el.tagline.textContent = module.tagline;
     el.wrapBtn.hidden = !module.wrappable;
 
     el.diffInputs.hidden = !module.twoUp;
     el.input.hidden = !!module.twoUp;
     el.uploadBtn.hidden = !!module.twoUp;
-    if (module.twoUp) el.fileChip.hidden = true;
-    else if (state.pendingFile) el.fileChip.hidden = false;
     updateInputMeta();
-
-    clearOutput();
-    hideError();
-    announce(module.title + ' module selected.');
   }
 
   /* ── helpers ─────────────────────────────────────────── */
@@ -849,6 +831,41 @@
     toast('Downloading ' + link.download);
   }
 
+  /* ── carrying input between tools ────────────────────── */
+
+  // Modules are separate pages now, so what you pasted is handed to the next
+  // one through sessionStorage. Capped: a 50MB paste does not belong in storage,
+  // and files are never persisted at all.
+  var CARRY_KEY = 'ihj:carry';
+  var CARRY_LIMIT = 100 * 1024;
+
+  function saveInput() {
+    var payload = { input: el.input.value, a: panes.a.text.value, b: panes.b.text.value };
+    var total = payload.input.length + payload.a.length + payload.b.length;
+
+    try {
+      if (total === 0 || total > CARRY_LIMIT) sessionStorage.removeItem(CARRY_KEY);
+      else sessionStorage.setItem(CARRY_KEY, JSON.stringify(payload));
+    } catch (err) { /* storage blocked or full */ }
+  }
+
+  function restoreInput() {
+    var payload;
+    try { payload = JSON.parse(sessionStorage.getItem(CARRY_KEY) || 'null'); } catch (err) { payload = null; }
+    if (!payload) { updateInputMeta(); return; }
+
+    if (current().twoUp) {
+      // Coming from a single-input tool, the one document seeds side A.
+      panes.a.text.value = payload.a || payload.input || '';
+      panes.b.text.value = payload.b || '';
+    } else {
+      el.input.value = payload.input || payload.a || '';
+    }
+    updateInputMeta();
+  }
+
+  window.addEventListener('pagehide', saveInput);
+
   /* ── line wrapping ───────────────────────────────────── */
 
   var WRAP_KEY = 'ihj:wrap';
@@ -873,11 +890,6 @@
   });
 
   /* ── events ──────────────────────────────────────────── */
-
-  el.rail.addEventListener('click', function (event) {
-    var item = event.target.closest('[data-module]');
-    if (item) selectModule(item.getAttribute('data-module'));
-  });
 
   el.formatBtn.addEventListener('click', run);
   el.copyBtn.addEventListener('click', copyOutput);
@@ -1002,7 +1014,8 @@
   /* ── init ────────────────────────────────────────────── */
 
   setWrap(initialWrap());
-  updateInputMeta();
+  applyModule();
+  restoreInput();
   clearOutput();
   getWorker();
 })();

@@ -7,6 +7,7 @@
 <meta name="description" content="Paste JSON or drop a file and get it pretty-printed or exported to CSV instantly. Handles files up to 50MB without freezing. Nothing leaves your browser.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Ctext x='16' y='22' font-family='ui-monospace,monospace' font-size='16' font-weight='700' text-anchor='middle' fill='white'%3E%7B%7D%3C/text%3E%3C/svg%3E">
+<!--HEAD-->
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -14,25 +15,25 @@
 <div class="app">
 
   <nav class="rail" aria-label="Modules">
-    <button type="button" class="rail-item" data-module="formatter" aria-current="page">
+    <a class="rail-item" href="/" data-module="formatter">
       <svg viewBox="0 0 24 24" aria-hidden="true" width="19" height="19"><path d="M9 4H8a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h1M15 4h1a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2h-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span>Format</span>
-    </button>
+    </a>
 
-    <button type="button" class="rail-item" data-module="csv">
+    <a class="rail-item" href="/json-to-csv" data-module="csv">
       <svg viewBox="0 0 24 24" aria-hidden="true" width="19" height="19"><rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M9.5 9.5v10M15 9.5v10" stroke="currentColor" stroke-width="1.8"/></svg>
       <span>CSV</span>
-    </button>
+    </a>
 
-    <button type="button" class="rail-item" data-module="minify">
+    <a class="rail-item" href="/json-minifier" data-module="minify">
       <svg viewBox="0 0 24 24" aria-hidden="true" width="19" height="19"><path d="M4 7h16M7 12h10M10 17h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       <span>Minify</span>
-    </button>
+    </a>
 
-    <button type="button" class="rail-item" data-module="diff">
+    <a class="rail-item" href="/json-diff" data-module="diff">
       <svg viewBox="0 0 24 24" aria-hidden="true" width="19" height="19"><rect x="3.5" y="4.5" width="7" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="4.5" width="7" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="3 2"/></svg>
       <span>Diff</span>
-    </button>
+    </a>
 
     <div class="rail-divider" role="presentation"></div>
 
@@ -50,8 +51,8 @@
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">{ }</span>
         <div class="brand-text">
-          <h1>I Hate JSON</h1>
-          <p id="brand-tagline">Paste JSON. Get it formatted. Nothing leaves your browser.</p>
+          <span class="brand-name">I Hate JSON</span>
+          <h1 id="page-title">JSON formatter — paste, format, done</h1>
         </div>
       </div>
       <span class="privacy-badge" title="All parsing and conversion runs client-side in a Web Worker.">
@@ -183,6 +184,8 @@
         </div>
       </section>
     </main>
+
+    <!--CONTENT-->
 
     <footer class="site-footer">
       <span>No accounts. No uploads. No tracking. Just formatting.</span>
