@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I Hate JSON — instant JSON formatter</title>
+<meta name="description" content="Paste JSON or drop a file and get it pretty-printed instantly. Handles files up to 50MB without freezing. Nothing leaves your browser.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Ctext x='16' y='22' font-family='ui-monospace,monospace' font-size='16' font-weight='700' text-anchor='middle' fill='white'%3E%7B%7D%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">{ }</span>
+    <div class="brand-text">
+      <h1>I Hate JSON</h1>
+      <p>Paste JSON. Get it formatted. Nothing leaves your browser.</p>
+    </div>
+  </div>
+  <span class="privacy-badge" title="All parsing and formatting runs client-side in a Web Worker.">
+    <svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14"><path d="M12 2 4 5.5V11c0 5 3.4 9.1 8 10.5 4.6-1.4 8-5.5 8-10.5V5.5L12 2Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+    100% client-side
+  </span>
+</header>
+
+<main class="workspace">
+
+  <!-- ── Input ─────────────────────────────────────────────── -->
+  <section class="panel" id="input-panel" aria-labelledby="input-title">
+    <div class="panel-head">
+      <h2 id="input-title">Input</h2>
+      <span class="meta" id="input-meta">empty</span>
+      <div class="panel-actions">
+        <button type="button" class="btn btn-ghost" id="example-btn">Example</button>
+        <button type="button" class="btn btn-ghost" id="clear-btn">Clear</button>
+        <button type="button" class="btn btn-ghost" id="upload-btn">Upload file</button>
+        <input type="file" id="file-input" accept=".json,.txt,application/json,text/plain" hidden>
+      </div>
+    </div>
+
+    <div class="panel-body">
+      <textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off"
+        placeholder='Paste JSON here…&#10;&#10;{ "hello": "world", "items": [1, 2, 3] }&#10;&#10;…or drop a .json file anywhere on this page.'></textarea>
+
+      <div class="file-chip" id="file-chip" hidden>
+        <div class="file-chip-icon" aria-hidden="true">📄</div>
+        <div class="file-chip-text">
+          <strong id="file-chip-name">file.json</strong>
+          <span id="file-chip-size">0 B</span>
+        </div>
+        <button type="button" class="btn btn-ghost" id="file-chip-remove">Remove</button>
+        <p class="file-chip-note">Large files are kept out of the editor so typing stays smooth. Hit Format to process it.</p>
+      </div>
+    </div>
+
+    <div class="panel-foot">
+      <button type="button" class="btn btn-primary" id="format-btn">
+        <span class="btn-label">Format</span>
+        <span class="spinner" aria-hidden="true"></span>
+      </button>
+      <span class="hint">Or press <kbd>Ctrl</kbd>+<kbd>Enter</kbd> · max 50MB</span>
+    </div>
+  </section>
+
+  <!-- ── Output ────────────────────────────────────────────── -->
+  <section class="panel" id="output-panel" aria-labelledby="output-title">
+    <div class="panel-head">
+      <h2 id="output-title">Formatted</h2>
+      <span class="meta" id="output-meta"></span>
+      <div class="panel-actions">
+        <button type="button" class="btn btn-ghost" id="copy-btn" disabled>Copy</button>
+        <button type="button" class="btn btn-ghost" id="download-btn" disabled>Download .json</button>
+      </div>
+    </div>
+
+    <div class="panel-body">
+      <pre class="output" id="output" tabindex="0"><code id="output-code"></code></pre>
+
+      <div class="placeholder" id="output-placeholder">
+        <div class="placeholder-inner">
+          <span class="placeholder-mark" aria-hidden="true">{ }</span>
+          <p>Your formatted JSON will appear here.</p>
+          <p class="placeholder-sub">Two-space indent, syntax highlighted, ready to copy.</p>
+        </div>
+      </div>
+
+      <div class="error-box" id="error-box" hidden>
+        <div class="error-head">
+          <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v6M12 16.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <strong id="error-title">That doesn’t look like valid JSON</strong>
+        </div>
+        <p class="error-message" id="error-message"></p>
+        <pre class="error-snippet" id="error-snippet" hidden></pre>
+      </div>
+
+      <div class="truncation-note" id="truncation-note" hidden>
+        Preview truncated for speed — the full document is intact. Use <strong>Copy</strong> or <strong>Download</strong> to get all of it.
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <span>No accounts. No uploads. No tracking. Just formatting.</span>
+</footer>
+
+<div class="drop-overlay" id="drop-overlay" hidden>
+  <div class="drop-card">
+    <span aria-hidden="true">⬇</span>
+    <strong>Drop your JSON file</strong>
+    <span class="drop-sub">Up to 50MB — it never leaves your device</span>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<span class="sr-only" id="status-live" role="status" aria-live="polite"></span>
+
+<script src="app.js"></script>
+</body>
+</html>
