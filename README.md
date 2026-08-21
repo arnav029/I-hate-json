@@ -48,7 +48,7 @@ Adding a module means one `MODULES` entry in `app.js` and one mode in the worker
   carries a UTF-8 BOM so Excel does not mangle accented text
 - The table previews the first 20 rows and 40 columns; Copy and Download always give everything
 
-## What it does (v1)
+## What the formatter does
 
 - Paste JSON, or drag & drop / pick a `.json` file (up to 50MB)
 - Pretty-prints with a 2-space indent, syntax highlighted
@@ -59,7 +59,7 @@ Adding a module means one `MODULES` entry in `app.js` and one mode in the worker
   selected instead and the message says "near line N"
 - Long values soft-wrap in both panels (toggleable, remembered per browser)
 
-Deliberately out of scope for v1: minify, tree view, search, diff, schema validation.
+Still out of scope: tree view, key search, schema validation, JSON to TypeScript.
 
 ## Why it does not freeze on big files
 
@@ -98,7 +98,8 @@ npm start          # http://localhost:3000
 npm test           # every core, ~15s (builds multi-MB fixtures)
 ```
 
-No build step and no dependencies — `public/` can also be opened through any static server.
+No build step and no dependencies. `public/` is plain static files, but the per-route
+titles, canonical tags and page copy are applied by `server.js`, so serve it through that.
 
 ## SEO
 
