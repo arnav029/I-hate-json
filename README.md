@@ -14,7 +14,8 @@ pasted survives the switch. **Formatter** is what loads on `/`.
 | --- | --- |
 | Formatter | Pretty-prints with a 2-space indent, syntax highlighted |
 | CSV | Converts an array of objects to CSV — union of all keys, nested keys as dotted columns |
-| TypeScript, Minify, Diff | Listed as coming soon, not clickable |
+| Minify | Strips every optional byte, reporting how much smaller the result is |
+| TypeScript, Diff | Listed as coming soon, not clickable |
 
 Adding a module means one `MODULES` entry in `app.js` and one mode in the worker.
 

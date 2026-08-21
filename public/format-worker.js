@@ -11,6 +11,9 @@ var MODES = {
   format: function (text, onStage) {
     return self.JSONFormatterCore.format(text, { indent: 2, onStage: onStage });
   },
+  minify: function (text, onStage) {
+    return self.JSONFormatterCore.minify(text, { onStage: onStage });
+  },
   csv: function (text, onStage) {
     return self.JSONCsvCore.convert(text, { onStage: onStage });
   }

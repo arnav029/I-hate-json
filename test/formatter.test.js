@@ -186,6 +186,36 @@ test('truncates the preview but keeps the full output', () => {
   assert.ok(out.previewHtml.length > 0 && out.previewHtml.length < out.formatted.length * 3);
 });
 
+test('minifies away every optional byte', () => {
+  const out = core.minify('{\n  "a": 1,\n  "b": [ 1, 2 ],\n  "c": { "d": "e" }\n}');
+  assert.strictEqual(out.minified, '{"a":1,"b":[1,2],"c":{"d":"e"}}');
+  assert.strictEqual(out.stats.lines, 1);
+  assert.ok(out.stats.saved > 0, 'reports the bytes saved');
+  assert.strictEqual(out.stats.inputBytes - out.stats.outputBytes, out.stats.saved);
+});
+
+test('minified output round-trips to the same value', () => {
+  const src = '{"n":-1.5e3,"s":"a\\"b","u":"\\u00e9","arr":[null,true,{}],"deep":{"x":{"y":[1]}}}';
+  const out = core.minify(src);
+  assert.deepStrictEqual(JSON.parse(out.minified), JSON.parse(src));
+});
+
+test('minify highlights and reports errors like format does', () => {
+  const out = core.minify('{"a":1}');
+  assert.ok(out.previewHtml.includes('tok-key'), 'preview is highlighted');
+
+  let err;
+  try { core.minify('{"a":,}'); } catch (e) { err = e; }
+  assert.strictEqual(err.kind, 'parse');
+  assert.ok(err.range, 'carries a range for input highlighting');
+});
+
+test('minify reports stages in order', () => {
+  const stages = [];
+  core.minify('{"a":1}', { onStage: (s) => stages.push(s) });
+  assert.deepStrictEqual(stages, ['parsing', 'minifying', 'highlighting']);
+});
+
 test('reports stages in order', () => {
   const stages = [];
   core.format('{"a":1}', { onStage: (s) => stages.push(s) });

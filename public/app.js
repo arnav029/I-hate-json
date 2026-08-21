@@ -100,6 +100,29 @@
       }
     },
 
+    minify: {
+      mode: 'minify',
+      title: 'Minified',
+      action: 'Minify',
+      download: 'Download .json',
+      extension: '.min.json',
+      mime: 'application/json',
+      tagline: 'Paste JSON. Squeeze every byte out. Nothing leaves your browser.',
+      placeholder: ['Your minified JSON will appear here.', 'Every optional space and newline removed.'],
+      example: JSON.stringify(JSON.parse(EXAMPLE), null, 2),
+      wrappable: true,
+      view: el.outputPre,
+      text: function (result) { return result.minified; },
+      render: renderFormatted,
+      meta: function (stats) {
+        return formatBytes(stats.inputBytes) + ' → ' + formatBytes(stats.outputBytes) +
+          ' · ' + savedLabel(stats) + ' · ' + stats.ms + 'ms';
+      },
+      note: function () {
+        return 'Preview truncated for speed — the full document is intact. Use Copy or Download to get all of it.';
+      }
+    },
+
     csv: {
       mode: 'csv',
       title: 'CSV',
@@ -166,6 +189,12 @@
 
   function formatNumber(n) {
     return n.toLocaleString('en-US');
+  }
+
+  function savedLabel(stats) {
+    if (!stats.inputBytes || stats.saved === 0) return 'same size';
+    var percent = Math.round(Math.abs(stats.saved) / stats.inputBytes * 100);
+    return percent + '% ' + (stats.saved > 0 ? 'smaller' : 'larger');
   }
 
   var toastTimer = null;
@@ -386,6 +415,7 @@
     reading: 'Reading file…',
     parsing: 'Parsing…',
     formatting: 'Formatting…',
+    minifying: 'Minifying…',
     highlighting: 'Highlighting…',
     shaping: 'Reading rows…',
     building: 'Building CSV…'
@@ -476,8 +506,8 @@
         var execute = function (text) {
           var startedAt = Date.now();
           try {
-            var result = module.mode === 'csv'
-              ? self.JSONCsvCore.convert(text, {})
+            var result = module.mode === 'csv' ? self.JSONCsvCore.convert(text, {})
+              : module.mode === 'minify' ? self.JSONFormatterCore.minify(text, {})
               : self.JSONFormatterCore.format(text, { indent: 2 });
             result.stats.ms = Date.now() - startedAt;
             setBusy(false);

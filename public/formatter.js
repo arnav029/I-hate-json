@@ -296,8 +296,36 @@
     };
   }
 
+  function minify(text, opts) {
+    var onStage = (opts && opts.onStage) || function () {};
+
+    onStage('parsing');
+    var parsed = parse(text);
+
+    onStage('minifying');
+    var minified = JSON.stringify(parsed);
+
+    onStage('highlighting');
+    var preview = previewOf(minified);
+    var inputBytes = utf8ByteLength(text);
+    var outputBytes = utf8ByteLength(minified);
+
+    return {
+      minified: minified,
+      previewHtml: highlight(preview.text),
+      truncated: preview.truncated,
+      stats: {
+        inputBytes: inputBytes,
+        outputBytes: outputBytes,
+        saved: inputBytes - outputBytes,
+        lines: 1
+      }
+    };
+  }
+
   global.JSONFormatterCore = {
     format: format,
+    minify: minify,
     parse: parse,
     highlight: highlight,
     escapeHtml: escapeHtml,
