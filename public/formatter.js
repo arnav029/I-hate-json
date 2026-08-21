@@ -69,51 +69,149 @@
     return word ? word[0].length : 1;
   }
 
+  var NUMBER = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+  var ESCAPES = '"\\/bfnrt';
+
   /*
-   * Turn a JSON.parse failure into something a human can act on. V8 gives us two
-   * different message shapes:
-   *   "… in JSON at position 42 (line 3 column 8)"  → exact offset, easy
-   *   "Unexpected token ',', ..."ctx"... is not valid JSON" → no offset, but the
-   *      quoted context can be located in the source instead.
-   * When the context (or the token inside it) is ambiguous we say "near line N"
-   * rather than pointing confidently at the wrong place.
+   * Single pass over the grammar, returning the offset of the first construct
+   * that cannot be parsed. Engine messages are only consulted for wording —
+   * they carry no usable offset in half the cases, and the context window they
+   * do carry is ambiguous on short documents.
    */
+  function findErrorOffset(text) {
+    var n = text.length;
+    var i = 0;
+    var stack = [];
+    var state = 'value';
+    var fail = -1;
+
+    function atEnd() { return Math.max(0, n - 1); }
+
+    function skipWhitespace() {
+      while (i < n && ' \t\n\r'.indexOf(text.charAt(i)) !== -1) i++;
+    }
+
+    function scanString() {
+      i++;
+      while (i < n) {
+        var ch = text.charAt(i);
+        if (ch === '"') { i++; return true; }
+        if (ch === '\\') {
+          var esc = text.charAt(i + 1);
+          if (esc && ESCAPES.indexOf(esc) !== -1) { i += 2; continue; }
+          if (esc === 'u' && /^[0-9a-fA-F]{4}$/.test(text.substr(i + 2, 4))) { i += 6; continue; }
+          fail = i;
+          return false;
+        }
+        if (text.charCodeAt(i) < 0x20) { fail = i; return false; }
+        i++;
+      }
+      fail = atEnd();
+      return false;
+    }
+
+    function scanWord(word) {
+      if (text.substr(i, word.length) === word) { i += word.length; return true; }
+      fail = i;
+      return false;
+    }
+
+    function scanNumber() {
+      NUMBER.lastIndex = i;
+      var match = NUMBER.exec(text);
+      if (!match || match.index !== i) { fail = i; return false; }
+      i += match[0].length;
+      return true;
+    }
+
+    function scanScalar(ch) {
+      if (ch === '"') return scanString();
+      if (ch === 't') return scanWord('true');
+      if (ch === 'f') return scanWord('false');
+      if (ch === 'n') return scanWord('null');
+      if (ch === '-' || (ch >= '0' && ch <= '9')) return scanNumber();
+      fail = i;
+      return false;
+    }
+
+    for (;;) {
+      skipWhitespace();
+      var ch = i < n ? text.charAt(i) : '';
+      var here = i < n ? i : atEnd();
+
+      if (state === 'value' || state === 'value-or-close') {
+        if (state === 'value-or-close' && ch === ']') {
+          i++; stack.pop(); state = 'after-value'; continue;
+        }
+        if (ch === '') { fail = here; return fail; }
+        if (ch === '{') { i++; stack.push('object'); state = 'key-or-close'; continue; }
+        if (ch === '[') { i++; stack.push('array'); state = 'value-or-close'; continue; }
+        if (!scanScalar(ch)) return fail;
+        state = 'after-value';
+        continue;
+      }
+
+      if (state === 'key-or-close' && ch === '}') {
+        i++; stack.pop(); state = 'after-value'; continue;
+      }
+
+      if (state === 'key' || state === 'key-or-close') {
+        if (ch !== '"') { fail = here; return fail; }
+        if (!scanString()) return fail;
+        state = 'colon';
+        continue;
+      }
+
+      if (state === 'colon') {
+        if (ch !== ':') { fail = here; return fail; }
+        i++;
+        state = 'value';
+        continue;
+      }
+
+      if (!stack.length) {
+        if (i < n) { fail = i; return fail; }
+        return -1;
+      }
+
+      var container = stack[stack.length - 1];
+      if (ch === ',') {
+        i++;
+        state = container === 'object' ? 'key' : 'value';
+        continue;
+      }
+      if (ch === (container === 'object' ? '}' : ']')) {
+        i++; stack.pop();
+        continue;
+      }
+      fail = here;
+      return fail;
+    }
+  }
+
+  function friendlyMessage(raw) {
+    if (/Unexpected end of (JSON )?input/i.test(raw)) {
+      return 'The document ends before the JSON is complete — something is left unclosed.';
+    }
+    var context = /^Unexpected token (.+?), (?:\.\.\.)?"[\s\S]*?"(?:\.\.\.)? is not valid JSON$/.exec(raw);
+    if (context) return 'Unexpected token ' + context[1] + '.';
+    return raw.replace(/\s*in JSON at position \d+(\s*\(line \d+ column \d+\))?/i, '.');
+  }
+
   function describeParseError(err, text) {
     var raw = String(err && err.message ? err.message : err);
     var detail = { message: raw, line: null, column: null, snippet: null, range: null, approximate: false };
-    var pos = null;
+    var pos = findErrorOffset(text);
 
-    var atPosition = /at position (\d+)/i.exec(raw);
-    var context = /^Unexpected token (.+?), (?:\.\.\.)?"([\s\S]*?)"(?:\.\.\.)? is not valid JSON$/.exec(raw);
-
-    if (atPosition) {
-      pos = Math.min(parseInt(atPosition[1], 10), Math.max(text.length - 1, 0));
-      // Drop the position tail — we render it ourselves, more legibly.
-      detail.message = raw.replace(/\s*in JSON at position \d+(\s*\(line \d+ column \d+\))?/i, '.');
-    } else if (/Unexpected end of (JSON input|input)/i.test(raw)) {
-      pos = Math.max(text.length - 1, 0);
-      detail.message = 'The document ends before the JSON is complete — something is left unclosed.';
-    } else if (context) {
-      var token = context[1];
-      var ctx = context[2];
-      detail.message = 'Unexpected token ' + token + '.';
-
-      if (ctx && text.indexOf(ctx) === text.lastIndexOf(ctx)) {
-        var start = text.indexOf(ctx);
-        if (start !== -1) {
-          var ch = /^'([\s\S])'$/.exec(token);
-          var at = ch ? ctx.indexOf(ch[1]) : -1;
-          if (at !== -1 && at === ctx.lastIndexOf(ch[1])) {
-            pos = start + at;              // the token appears once: exact hit
-          } else {
-            pos = start;                   // ambiguous: point at the region
-            detail.approximate = true;
-          }
-        }
-      }
+    if (pos < 0) {
+      // The scanner and the engine disagree; fall back to the reported offset.
+      var atPosition = /at position (\d+)/i.exec(raw);
+      pos = atPosition ? Math.min(parseInt(atPosition[1], 10), Math.max(text.length - 1, 0)) : null;
     }
 
     if (pos === null || text.length === 0) return detail;
+
+    detail.message = friendlyMessage(raw);
 
     var excerpt = excerptAt(text, pos, !detail.approximate);
     detail.line = excerpt.lineNumber;

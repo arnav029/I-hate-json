@@ -102,6 +102,48 @@ test('an approximate error ranges over the line, not a guessed token', () => {
   }
 });
 
+test('pinpoints the token on a short ambiguous document', () => {
+  const src = '{"a": 1,\n "b": ,\n "c": 3}';
+  const err = failure(src);
+  assert.strictEqual(err.approximate, false);
+  assert.strictEqual(err.line, 2);
+  assert.strictEqual(src.slice(err.range.start, err.range.end), ',');
+});
+
+test('locates errors the engine reports without any position', () => {
+  const cases = [
+    ['{"a": 1 "b": 2}', '"b"'],
+    ['[1, 2 3]', '3'],
+    ['{"a": [1,]}', ']'],
+    ['{"a": "x",}', '}'],
+    ['[{"a": 1} {"b": 2}]', '{'],
+    ['{"a" 1}', '1'],
+    ['{"a": 1}}', '}']
+  ];
+  for (const [src, expected] of cases) {
+    const err = failure(src);
+    assert.strictEqual(src.slice(err.range.start, err.range.end), expected, src);
+  }
+});
+
+test('scanner agrees with JSON.parse on validity', () => {
+  const valid = ['{}', '[]', '{"a":[1,2,{"b":null}]}', '  {"n": -1.5e-3, "s": "a\\"b\\u00e9"}  ',
+    '[[[[1]]]]', '{"t":true,"f":false,"n":null}', '""', '0', '-0.5', '[{"a":{}},[]]'];
+  for (const src of valid) {
+    assert.doesNotThrow(() => core.format(src), src);
+  }
+
+  const invalid = ['{', '[', '{"a"}', '{"a":}', '[,]', '{,}', '[1,,2]', '"unterminated',
+    '{"a": 01}', '[1] extra', "{'a':1}", '[1,2,]', '{"a":1,}', 'undefined', '{"a": +1}',
+    '[1e]', '"\\q"', '{"a":"b" "c":"d"}'];
+  for (const src of invalid) {
+    const err = failure(src);
+    assert.strictEqual(err.kind, 'parse', src);
+    assert.ok(err.range, 'no range for ' + JSON.stringify(src));
+    assert.ok(err.range.start >= 0 && err.range.end <= src.length, 'range out of bounds for ' + src);
+  }
+});
+
 test('explains truncated documents', () => {
   const err = failure('{"a": [1, 2,');
   assert.strictEqual(err.kind, 'parse');
