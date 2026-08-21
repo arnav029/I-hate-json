@@ -76,6 +76,32 @@ test('locates the error from the engine context snippet', () => {
   assert.ok(!err.message.includes('is not valid JSON'), 'noisy engine text is cleaned up');
 });
 
+test('ranges cover exactly the offending token', () => {
+  const src = '{\n  "alpha": 1,\n  "beta": ,\n  "gamma": 3\n}';
+  const err = failure(src);
+  assert.strictEqual(src.slice(err.range.start, err.range.end), ',');
+});
+
+test('ranges cover a whole word, not just its first character', () => {
+  const src = '{alpha: 1}';
+  const err = failure(src);
+  assert.strictEqual(src.slice(err.range.start, err.range.end), 'alpha');
+});
+
+test('ranges cover a whole string token', () => {
+  const src = '{"a": "one" "b": 2}';
+  const err = failure(src);
+  assert.strictEqual(src.slice(err.range.start, err.range.end), '"b"');
+});
+
+test('an approximate error ranges over the line, not a guessed token', () => {
+  const err = failure('nope');
+  if (err.approximate) {
+    assert.strictEqual(err.range.start, 0);
+    assert.strictEqual(err.range.end, 4);
+  }
+});
+
 test('explains truncated documents', () => {
   const err = failure('{"a": [1, 2,');
   assert.strictEqual(err.kind, 'parse');

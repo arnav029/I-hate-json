@@ -436,6 +436,25 @@ textarea#input:focus-visible,
 
 .error-snippet[hidden] { display: none; }
 
+.error-jump {
+  margin-top: 10px;
+  background: var(--bg-panel);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}
+
+.error-jump[hidden] { display: none; }
+
+.error-jump:hover:not(:disabled) {
+  background: var(--danger);
+  color: var(--bg-panel);
+}
+
+textarea#input.marked::selection {
+  background: color-mix(in srgb, var(--danger) 55%, transparent);
+  color: var(--text);
+}
+
 .truncation-note {
   position: absolute;
   left: 12px; right: 12px; top: 12px;

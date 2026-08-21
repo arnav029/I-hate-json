@@ -21,6 +21,7 @@
     errorTitle: $('error-title'),
     errorMessage: $('error-message'),
     errorSnippet: $('error-snippet'),
+    jumpBtn: $('jump-btn'),
     truncation: $('truncation-note'),
     formatBtn: $('format-btn'),
     copyBtn: $('copy-btn'),
@@ -43,6 +44,7 @@
     pendingFile: null,   // a File too big to show in the textarea
     formatted: '',       // full formatted output (source of truth for copy/download)
     sourceName: '',      // original file name, used to suggest a download name
+    errorRange: null,    // {start, end} of the offending token in the input
     busy: false,
     requestId: 0
   };
@@ -125,6 +127,39 @@
   function hideError() {
     el.errorBox.hidden = true;
     el.errorSnippet.hidden = true;
+    el.jumpBtn.hidden = true;
+    clearMark();
+  }
+
+  function clearMark() {
+    state.errorRange = null;
+    el.input.classList.remove('marked');
+  }
+
+  function markable(range) {
+    return !!range && !state.pendingFile && range.end <= el.input.value.length;
+  }
+
+  function scrollRangeIntoView(start) {
+    var before = el.input.value.slice(0, start);
+    var line = before.length ? before.split('\n').length : 1;
+    var lineHeight = parseFloat(getComputedStyle(el.input).lineHeight) || 20;
+    var target = (line - 1) * lineHeight;
+    var padding = el.input.clientHeight / 3;
+
+    if (target < el.input.scrollTop + padding || target > el.input.scrollTop + el.input.clientHeight - padding) {
+      el.input.scrollTop = Math.max(0, target - padding);
+    }
+  }
+
+  function markError() {
+    var range = state.errorRange;
+    if (!markable(range)) return;
+
+    el.input.classList.add('marked');
+    el.input.focus({ preventScroll: true });
+    el.input.setSelectionRange(range.start, range.end);
+    scrollRangeIntoView(range.start);
   }
 
   function showError(error) {
@@ -164,6 +199,9 @@
     }
 
     el.errorBox.hidden = false;
+    state.errorRange = error.range || null;
+    el.jumpBtn.hidden = !markable(state.errorRange);
+    markError();
     announce(title + '. ' + message);
   }
 
@@ -464,7 +502,13 @@
 
   // Formatting is explicit, never on keystroke — that is what keeps typing and
   // pasting smooth on very large documents.
-  el.input.addEventListener('input', updateInputMeta);
+  el.input.addEventListener('input', function () {
+    updateInputMeta();
+    clearMark();
+    el.jumpBtn.hidden = true;
+  });
+
+  el.jumpBtn.addEventListener('click', markError);
 
   document.addEventListener('keydown', function (event) {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {

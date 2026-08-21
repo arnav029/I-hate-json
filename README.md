@@ -11,6 +11,10 @@ The server in this repo only hands over static files.
 - Pretty-prints with a 2-space indent, syntax highlighted
 - Copy to clipboard, or download as `.json`
 - Clear inline errors with line, column and a caret under the offending token
+- On a parse failure the input scrolls to the broken token and selects it; **Show me in
+  the input** re-selects it. Where the engine gives no usable position the line is
+  selected instead and the message says "near line N"
+- Long values soft-wrap in both panels (toggleable, remembered per browser)
 
 Deliberately out of scope for v1: minify, tree view, search, diff, schema validation.
 

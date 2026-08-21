@@ -52,8 +52,21 @@
       line: line,
       caret: withCaret ? Math.max(0, Math.min(caretAt, line.length)) : -1,
       lineNumber: countLines(text.slice(0, lineStart)) || 1,
-      column: pos - lineStart + 1
+      column: pos - lineStart + 1,
+      lineStart: lineStart,
+      lineEnd: lineEnd
     };
+  }
+
+  function tokenLengthAt(text, pos) {
+    var rest = text.slice(pos, pos + 256);
+    if (!rest) return 0;
+    if (rest.charAt(0) === '"') {
+      var string = /^"(?:\\.|[^"\\\n])*"?/.exec(rest);
+      return string ? string[0].length : 1;
+    }
+    var word = /^[\w+.\-]+/.exec(rest);
+    return word ? word[0].length : 1;
   }
 
   /*
@@ -67,7 +80,7 @@
    */
   function describeParseError(err, text) {
     var raw = String(err && err.message ? err.message : err);
-    var detail = { message: raw, line: null, column: null, snippet: null, approximate: false };
+    var detail = { message: raw, line: null, column: null, snippet: null, range: null, approximate: false };
     var pos = null;
 
     var atPosition = /at position (\d+)/i.exec(raw);
@@ -106,6 +119,9 @@
     detail.line = excerpt.lineNumber;
     detail.column = detail.approximate ? null : excerpt.column;
     detail.snippet = { line: excerpt.line, caret: excerpt.caret };
+    detail.range = detail.approximate
+      ? { start: excerpt.lineStart, end: excerpt.lineEnd }
+      : { start: pos, end: pos + tokenLengthAt(text, pos) };
     return detail;
   }
 
