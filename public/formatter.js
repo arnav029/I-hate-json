@@ -258,23 +258,25 @@
    * Parse + pretty-print. Throws a plain object (not an Error) describing the
    * failure so it survives structured cloning back to the main thread.
    */
-  function format(text, opts) {
-    var indent = (opts && opts.indent) || 2;
-    var onStage = (opts && opts.onStage) || function () {};
-
+  function parse(text) {
     if (text.trim() === '') {
-      throw { kind: 'empty', message: 'Nothing to format yet — paste some JSON or drop a file in.' };
+      throw { kind: 'empty', message: 'Nothing here yet — paste some JSON or drop a file in.' };
     }
-
-    onStage('parsing');
-    var parsed;
     try {
-      parsed = JSON.parse(text);
+      return JSON.parse(text);
     } catch (err) {
       var detail = describeParseError(err, text);
       detail.kind = 'parse';
       throw detail;
     }
+  }
+
+  function format(text, opts) {
+    var indent = (opts && opts.indent) || 2;
+    var onStage = (opts && opts.onStage) || function () {};
+
+    onStage('parsing');
+    var parsed = parse(text);
 
     onStage('formatting');
     var formatted = JSON.stringify(parsed, null, indent);
@@ -296,6 +298,7 @@
 
   global.JSONFormatterCore = {
     format: format,
+    parse: parse,
     highlight: highlight,
     escapeHtml: escapeHtml,
     countLines: countLines,

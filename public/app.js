@@ -1,23 +1,34 @@
 /*
  * UI wiring. Everything expensive is delegated to format-worker.js so the
  * main thread only ever touches finished output.
+ *
+ * Modules share the input panel and swap the output side. Adding one means
+ * adding a MODULES entry plus a worker mode — nothing else here changes.
  */
 (function () {
   'use strict';
 
   var MAX_BYTES = 50 * 1024 * 1024;   // hard cap, matches the "up to 50MB" promise
   var INLINE_FILE_LIMIT = 1024 * 1024; // below this a dropped file is editable in the textarea
+  var PREVIEW_COLUMNS = 40;            // columns rendered in the CSV preview table
 
   var $ = function (id) { return document.getElementById(id); };
 
   var el = {
     input: $('input'),
     inputMeta: $('input-meta'),
+    outputTitle: $('output-title'),
     outputMeta: $('output-meta'),
     outputCode: $('output-code'),
     outputPre: $('output'),
     outputPanel: $('output-panel'),
+    csvView: $('csv-view'),
+    csvHead: $('csv-head'),
+    csvBody: $('csv-body'),
     placeholder: $('output-placeholder'),
+    placeholderText: $('placeholder-text'),
+    placeholderSub: $('placeholder-sub'),
+    tagline: $('brand-tagline'),
     errorBox: $('error-box'),
     errorTitle: $('error-title'),
     errorMessage: $('error-message'),
@@ -25,6 +36,7 @@
     jumpBtn: $('jump-btn'),
     truncation: $('truncation-note'),
     formatBtn: $('format-btn'),
+    formatBtnLabel: $('format-btn-label'),
     copyBtn: $('copy-btn'),
     wrapBtn: $('wrap-btn'),
     downloadBtn: $('download-btn'),
@@ -36,14 +48,16 @@
     fileChipName: $('file-chip-name'),
     fileChipSize: $('file-chip-size'),
     fileChipRemove: $('file-chip-remove'),
+    rail: document.querySelector('.rail'),
     dropOverlay: $('drop-overlay'),
     toast: $('toast'),
     live: $('status-live')
   };
 
   var state = {
+    module: 'formatter',
     pendingFile: null,   // a File too big to show in the textarea
-    formatted: '',       // full formatted output (source of truth for copy/download)
+    output: '',          // full result text, the source of truth for copy/download
     sourceName: '',      // original file name, used to suggest a download name
     errorRange: null,    // {start, end} of the offending token in the input
     truncated: false,    // preview shows less than the full output
@@ -55,6 +69,89 @@
     '"tagline":"Paste JSON. Get it formatted.","limits":{"maxFileSizeMB":50,"indent":2},' +
     '"features":["pretty-print","drag & drop","copy","download"],' +
     '"runsOnServer":false,"stars":null,"score":9.5}';
+
+  var CSV_EXAMPLE = '[{"id":1,"name":"Ada Lovelace","role":"engineer",' +
+    '"address":{"city":"London","zip":"W1"},"tags":["math","first"]},' +
+    '{"id":2,"name":"Grace Hopper","role":"admiral",' +
+    '"address":{"city":"New York","zip":"10001"},"tags":["compilers"],"active":true}]';
+
+  /* ── modules ─────────────────────────────────────────── */
+
+  var MODULES = {
+    formatter: {
+      mode: 'format',
+      title: 'Formatted',
+      action: 'Format',
+      download: 'Download .json',
+      extension: '.formatted.json',
+      mime: 'application/json',
+      tagline: 'Paste JSON. Get it formatted. Nothing leaves your browser.',
+      placeholder: ['Your formatted JSON will appear here.', 'Two-space indent, syntax highlighted, ready to copy.'],
+      example: EXAMPLE,
+      wrappable: true,
+      view: el.outputPre,
+      text: function (result) { return result.formatted; },
+      render: renderFormatted,
+      meta: function (stats) {
+        return formatNumber(stats.lines) + ' lines · ' + formatBytes(stats.outputBytes) + ' · ' + stats.ms + 'ms';
+      },
+      note: function () {
+        return 'Preview truncated for speed — the full document is intact. Use Copy or Download to get all of it.';
+      }
+    },
+
+    csv: {
+      mode: 'csv',
+      title: 'CSV',
+      action: 'Convert to CSV',
+      download: 'Download .csv',
+      extension: '.csv',
+      mime: 'text/csv',
+      tagline: 'Paste a JSON array. Get a CSV. Nothing leaves your browser.',
+      placeholder: ['Your CSV preview will appear here.', 'Needs an array of objects — nested keys become dotted columns.'],
+      example: CSV_EXAMPLE,
+      wrappable: false,
+      view: el.csvView,
+      text: function (result) { return result.csv; },
+      render: renderCsv,
+      meta: function (stats) {
+        return formatNumber(stats.rows) + ' rows × ' + formatNumber(stats.columns) + ' cols · ' +
+          formatBytes(stats.bytes) + ' · ' + stats.ms + 'ms';
+      },
+      note: function (result) {
+        return 'Previewing the first ' + formatNumber(result.preview.length) + ' of ' +
+          formatNumber(result.stats.rows) + ' rows — Copy and Download give you all of them.';
+      }
+    }
+  };
+
+  function current() {
+    return MODULES[state.module];
+  }
+
+  function selectModule(name) {
+    if (!MODULES[name] || state.module === name) return;
+
+    state.module = name;
+    var module = current();
+
+    Array.prototype.forEach.call(el.rail.querySelectorAll('[data-module]'), function (item) {
+      var active = item.getAttribute('data-module') === name;
+      item.classList.toggle('is-active', active);
+      if (active) item.setAttribute('aria-current', 'page');
+      else item.removeAttribute('aria-current');
+    });
+
+    el.outputTitle.textContent = module.title;
+    el.formatBtnLabel.textContent = module.action;
+    el.downloadBtn.textContent = module.download;
+    el.tagline.textContent = module.tagline;
+    el.wrapBtn.hidden = !module.wrappable;
+
+    clearOutput();
+    hideError();
+    announce(module.title + ' module selected.');
+  }
 
   /* ── helpers ─────────────────────────────────────────── */
 
@@ -117,10 +214,18 @@
   /* ── output state ────────────────────────────────────── */
 
   function clearOutput() {
-    state.formatted = '';
+    var module = current();
+
+    state.output = '';
     state.truncated = false;
     el.outputCode.textContent = '';
+    el.csvHead.innerHTML = '';
+    el.csvBody.innerHTML = '';
     el.outputMeta.textContent = '';
+    el.outputPre.hidden = module.view !== el.outputPre;
+    el.csvView.hidden = module.view !== el.csvView;
+    el.placeholderText.textContent = module.placeholder[0];
+    el.placeholderSub.textContent = module.placeholder[1];
     el.placeholder.hidden = false;
     el.truncation.hidden = true;
     el.copyBtn.disabled = true;
@@ -165,32 +270,29 @@
     scrollRangeIntoView(range.start);
   }
 
+  var ERROR_TITLES = {
+    empty: 'Nothing to work with',
+    'too-big': 'That file is too large',
+    read: 'Couldn’t read that file',
+    shape: 'CSV needs a different shape'
+  };
+
   function showError(error) {
     clearOutput();
     el.placeholder.hidden = true;
 
-    var title = 'That doesn’t look like valid JSON';
+    var title = ERROR_TITLES[error.kind] || 'That doesn’t look like valid JSON';
     var message = error.message;
 
-    if (error.kind === 'empty') {
-      title = 'Nothing to format';
-      message = error.message;
-    } else if (error.kind === 'too-big') {
-      title = 'That file is too large';
-    } else if (error.kind === 'read') {
-      title = 'Couldn’t read that file';
-    } else if (error.kind === 'parse' && error.line) {
-      var where = error.approximate
-        ? 'Near line ' + error.line
-        : 'Line ' + error.line + ', column ' + error.column;
-      message = where + ' — ' + error.message;
+    if (error.kind === 'parse' && error.line) {
+      message = (error.approximate ? 'Near line ' + error.line
+        : 'Line ' + error.line + ', column ' + error.column) + ' — ' + error.message;
     }
 
     el.errorTitle.textContent = title;
     el.errorMessage.textContent = message;
 
     if (error.snippet) {
-      // textContent, never innerHTML: the snippet is raw user input.
       var snippet = error.snippet.line;
       if (error.snippet.caret >= 0) {
         snippet += '\n' + new Array(error.snippet.caret + 1).join(' ') + '^';
@@ -208,22 +310,67 @@
     announce(title + '. ' + message);
   }
 
-  function showResult(result) {
-    state.formatted = result.formatted;
-    state.truncated = result.truncated;
-
-    hideError();
-    el.placeholder.hidden = true;
+  function renderFormatted(result) {
     el.outputCode.innerHTML = result.previewHtml;
     el.outputPre.scrollTop = 0;
-    el.truncation.hidden = !result.truncated;
+  }
+
+  function renderCsv(result) {
+    var columns = result.columns.slice(0, PREVIEW_COLUMNS);
+    var head = document.createDocumentFragment();
+    var body = document.createDocumentFragment();
+    var headRow = document.createElement('tr');
+
+    columns.forEach(function (name) {
+      var th = document.createElement('th');
+      th.textContent = name;
+      headRow.appendChild(th);
+    });
+    if (result.columns.length > columns.length) {
+      var more = document.createElement('th');
+      more.className = 'is-more';
+      more.textContent = '+' + (result.columns.length - columns.length) + ' more';
+      headRow.appendChild(more);
+    }
+    head.appendChild(headRow);
+
+    result.preview.forEach(function (cells) {
+      var tr = document.createElement('tr');
+      for (var i = 0; i < columns.length; i++) {
+        var td = document.createElement('td');
+        td.textContent = cells[i];
+        if (cells[i] === '') td.className = 'is-empty';
+        tr.appendChild(td);
+      }
+      if (result.columns.length > columns.length) tr.appendChild(document.createElement('td'));
+      body.appendChild(tr);
+    });
+
+    el.csvHead.innerHTML = '';
+    el.csvBody.innerHTML = '';
+    el.csvHead.appendChild(head);
+    el.csvBody.appendChild(body);
+    el.csvView.scrollTop = 0;
+  }
+
+  function showResult(result) {
+    var module = current();
+
+    hideError();
+    clearOutput();
+
+    state.output = module.text(result);
+    state.truncated = !!result.truncated || (result.preview && result.stats.rows > result.preview.length);
+
+    module.render(result);
+
+    el.placeholder.hidden = true;
+    el.truncation.textContent = module.note(result);
+    el.truncation.hidden = !state.truncated;
     el.copyBtn.disabled = false;
     el.downloadBtn.disabled = false;
-
-    var s = result.stats;
-    el.outputMeta.textContent =
-      formatNumber(s.lines) + ' lines · ' + formatBytes(s.outputBytes) + ' · ' + s.ms + 'ms';
-    announce('Formatted ' + formatNumber(s.lines) + ' lines in ' + s.ms + ' milliseconds.');
+    el.outputMeta.textContent = module.meta(result.stats);
+    announce(module.title + ' ready. ' + el.outputMeta.textContent);
   }
 
   function setBusy(busy, stage) {
@@ -239,7 +386,9 @@
     reading: 'Reading file…',
     parsing: 'Parsing…',
     formatting: 'Formatting…',
-    highlighting: 'Highlighting…'
+    highlighting: 'Highlighting…',
+    shaping: 'Reading rows…',
+    building: 'Building CSV…'
   };
 
   var worker = null;
@@ -251,7 +400,6 @@
       worker = new Worker('format-worker.js');
       worker.onmessage = onWorkerMessage;
       worker.onerror = function () {
-        // Fall back to the main thread rather than leaving the user stuck.
         workerBroken = true;
         worker = null;
         if (state.busy) { setBusy(false); formatOnMainThread(); }
@@ -265,7 +413,7 @@
 
   function onWorkerMessage(event) {
     var data = event.data;
-    if (data.id !== state.requestId) return; // a newer request superseded this one
+    if (data.id !== state.requestId) return;
 
     if (data.type === 'stage') {
       if (state.busy) el.outputMeta.textContent = STAGE_LABEL[data.stage] || 'Working…';
@@ -277,9 +425,9 @@
     else showResult(data);
   }
 
-  /* ── formatting ──────────────────────────────────────── */
+  /* ── running a module ────────────────────────────────── */
 
-  function format() {
+  function run() {
     if (state.busy) return;
 
     var file = state.pendingFile;
@@ -293,13 +441,10 @@
       return;
     }
 
-    // Cheap guard: a UTF-8 string is never fewer bytes than characters, so this
-    // catches anything genuinely oversized without walking a 50MB string here.
+    // A UTF-8 string is never fewer bytes than characters, so this catches
+    // anything oversized without walking a 50MB string on the main thread.
     if (!file && text.length > MAX_BYTES) {
-      showError({
-        kind: 'too-big',
-        message: 'That input is over the 50MB limit. Try splitting it first.'
-      });
+      showError({ kind: 'too-big', message: 'That input is over the 50MB limit. Try splitting it first.' });
       return;
     }
 
@@ -315,21 +460,25 @@
     var w = getWorker();
     if (!w) { formatOnMainThread(); return; }
 
-    if (file) w.postMessage({ id: state.requestId, source: 'file', file: file });
-    else w.postMessage({ id: state.requestId, source: 'text', text: text });
+    var message = { id: state.requestId, mode: current().mode };
+    if (file) { message.source = 'file'; message.file = file; }
+    else { message.source = 'text'; message.text = text; }
+    w.postMessage(message);
   }
 
-  // Fallback path for browsers where Workers are blocked. Same core module, so
-  // the behaviour is identical — it just blocks the UI while it runs.
+  // Fallback for browsers where Workers are blocked. Same cores, so behaviour
+  // is identical — it just blocks the UI while it runs.
   function formatOnMainThread() {
-    loadCore(function () {
+    loadCores(function () {
       setBusy(true);
-      // Yield once so the busy state actually paints before we block.
       setTimeout(function () {
-        var run = function (text) {
+        var module = current();
+        var execute = function (text) {
           var startedAt = Date.now();
           try {
-            var result = self.JSONFormatterCore.format(text, { indent: 2 });
+            var result = module.mode === 'csv'
+              ? self.JSONCsvCore.convert(text, {})
+              : self.JSONFormatterCore.format(text, { indent: 2 });
             result.stats.ms = Date.now() - startedAt;
             setBusy(false);
             showResult(result);
@@ -340,27 +489,35 @@
         };
 
         if (state.pendingFile) {
-          state.pendingFile.text().then(run, function (err) {
+          state.pendingFile.text().then(execute, function (err) {
             setBusy(false);
             showError({ kind: 'read', message: String(err && err.message ? err.message : err) });
           });
         } else {
-          run(el.input.value);
+          execute(el.input.value);
         }
       }, 16);
     });
   }
 
-  function loadCore(done) {
-    if (self.JSONFormatterCore) { done(); return; }
-    var script = document.createElement('script');
-    script.src = 'formatter.js';
-    script.onload = done;
-    script.onerror = function () {
-      setBusy(false);
-      showError({ kind: 'unknown', message: 'Could not load the formatter. Try reloading the page.' });
-    };
-    document.head.appendChild(script);
+  function loadCores(done) {
+    var pending = ['formatter.js', 'csv.js'].filter(function (src) {
+      return src === 'csv.js' ? !self.JSONCsvCore : !self.JSONFormatterCore;
+    });
+
+    if (!pending.length) { done(); return; }
+
+    var remaining = pending.length;
+    pending.forEach(function (src) {
+      var script = document.createElement('script');
+      script.src = src;
+      script.onload = function () { if (--remaining === 0) done(); };
+      script.onerror = function () {
+        setBusy(false);
+        showError({ kind: 'unknown', message: 'Could not load the tools. Try reloading the page.' });
+      };
+      document.head.appendChild(script);
+    });
   }
 
   /* ── file intake ─────────────────────────────────────── */
@@ -380,13 +537,12 @@
     hideError();
 
     if (file.size <= INLINE_FILE_LIMIT) {
-      // Small enough to edit comfortably: drop it straight into the textarea.
       file.text().then(function (text) {
         clearFileChip();
         el.input.value = text;
         state.sourceName = file.name;
         updateInputMeta();
-        format();
+        run();
       }, function (err) {
         showError({ kind: 'read', message: String(err && err.message ? err.message : err) });
       });
@@ -394,17 +550,17 @@
     }
 
     showFileChip(file);
-    format();
+    run();
   }
 
   /* ── copy / download ─────────────────────────────────── */
 
   function copyOutput() {
-    if (!state.formatted) return;
+    if (!state.output) return;
 
     var fallback = function () {
       var scratch = document.createElement('textarea');
-      scratch.value = state.formatted;
+      scratch.value = state.output;
       scratch.setAttribute('readonly', '');
       scratch.style.position = 'fixed';
       scratch.style.opacity = '0';
@@ -417,7 +573,7 @@
     };
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(state.formatted).then(function () {
+      navigator.clipboard.writeText(state.output).then(function () {
         toast('Copied to clipboard');
       }, fallback);
     } else {
@@ -426,14 +582,17 @@
   }
 
   function downloadOutput() {
-    if (!state.formatted) return;
+    if (!state.output) return;
 
-    var name = state.sourceName ? state.sourceName.replace(/\.json$/i, '') : 'formatted';
-    var blob = new Blob([state.formatted], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
+    var module = current();
+    var name = state.sourceName ? state.sourceName.replace(/\.json$/i, '') : 'output';
+    // The BOM keeps Excel from mangling non-ASCII cells.
+    var parts = module.mode === 'csv' ? ['﻿', state.output] : [state.output];
+    var url = URL.createObjectURL(new Blob(parts, { type: module.mime }));
     var link = document.createElement('a');
+
     link.href = url;
-    link.download = name + '.formatted.json';
+    link.download = name + module.extension;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -443,9 +602,6 @@
 
   /* ── line wrapping ───────────────────────────────────── */
 
-  // Purely visual — the stored output, copy and download are untouched.
-  // Defaults to on: one long string value (a base64 blob, an encoded payload)
-  // would otherwise run off the right edge of both panels.
   var WRAP_KEY = 'ihj:wrap';
 
   function setWrap(on) {
@@ -459,7 +615,7 @@
     try {
       var stored = localStorage.getItem(WRAP_KEY);
       if (stored !== null) return stored === '1';
-    } catch (err) { /* storage blocked — fall through to the default */ }
+    } catch (err) { /* storage blocked */ }
     return true;
   }
 
@@ -469,7 +625,12 @@
 
   /* ── events ──────────────────────────────────────────── */
 
-  el.formatBtn.addEventListener('click', format);
+  el.rail.addEventListener('click', function (event) {
+    var item = event.target.closest('[data-module]');
+    if (item) selectModule(item.getAttribute('data-module'));
+  });
+
+  el.formatBtn.addEventListener('click', run);
   el.copyBtn.addEventListener('click', copyOutput);
   el.downloadBtn.addEventListener('click', downloadOutput);
 
@@ -477,7 +638,7 @@
 
   el.fileInput.addEventListener('change', function () {
     acceptFile(el.fileInput.files && el.fileInput.files[0]);
-    el.fileInput.value = ''; // allow re-picking the same file
+    el.fileInput.value = '';
   });
 
   el.fileChipRemove.addEventListener('click', function () {
@@ -499,12 +660,12 @@
   el.exampleBtn.addEventListener('click', function () {
     clearFileChip();
     state.sourceName = '';
-    el.input.value = EXAMPLE;
+    el.input.value = current().example;
     updateInputMeta();
-    format();
+    run();
   });
 
-  // Formatting is explicit, never on keystroke — that is what keeps typing and
+  // Running is explicit, never on keystroke — that is what keeps typing and
   // pasting smooth on very large documents.
   el.input.addEventListener('input', function () {
     updateInputMeta();
@@ -515,8 +676,9 @@
   el.jumpBtn.addEventListener('click', markError);
 
   function selectOutput() {
+    var node = current().view === el.csvView ? el.csvView : el.outputCode;
     var range = document.createRange();
-    range.selectNodeContents(el.outputCode);
+    range.selectNodeContents(node);
     var selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
@@ -533,19 +695,18 @@
 
     if (event.key === 'Enter') {
       event.preventDefault();
-      format();
+      run();
       return;
     }
 
-    if ((event.key || '').toLowerCase() === 'a' && state.formatted && ownsSelectAll(event.target)) {
+    if ((event.key || '').toLowerCase() === 'a' && state.output && ownsSelectAll(event.target)) {
       event.preventDefault();
-      el.outputPre.focus({ preventScroll: true });
+      current().view.focus({ preventScroll: true });
       selectOutput();
       if (state.truncated) toast('Preview only — use Copy for the whole document');
     }
   });
 
-  // Drag & drop anywhere on the page.
   var dragDepth = 0;
 
   function hasFiles(event) {
@@ -585,5 +746,5 @@
   setWrap(initialWrap());
   updateInputMeta();
   clearOutput();
-  getWorker(); // warm the worker up so the first format is not slowed by startup
+  getWorker();
 })();

@@ -71,6 +71,76 @@ body {
   clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 
+/* ── App shell + module rail ────────────────────────────── */
+.app {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.shell {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rail {
+  flex: 0 0 74px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.rail-item {
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 9px 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 550;
+  letter-spacing: .01em;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease;
+}
+
+.rail-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.rail-item.is-active,
+.rail-item[aria-current="page"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.rail-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.rail-item:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+
+.rail-divider {
+  height: 1px;
+  margin: 8px 10px;
+  background: var(--border);
+}
+
 /* ── Header ─────────────────────────────────────────────── */
 .site-header {
   display: flex;
@@ -331,6 +401,53 @@ textarea#input:focus-visible,
 .tok-num { color: var(--tok-num); }
 .tok-lit { color: var(--tok-lit); font-weight: 600; }
 
+/* ── CSV preview ────────────────────────────────────────── */
+.csv-view {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--bg-sunken);
+}
+
+.csv-view[hidden] { display: none; }
+
+.csv-view:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.csv-table {
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.csv-table th,
+.csv-table td {
+  padding: 7px 12px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.csv-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-panel);
+  color: var(--tok-key);
+  font-weight: 650;
+  border-bottom-width: 2px;
+}
+
+.csv-table th.is-more { color: var(--text-faint); font-style: italic; }
+.csv-table td.is-empty { background: color-mix(in srgb, var(--text-faint) 8%, transparent); }
+.csv-table tbody tr:hover td { background: var(--bg-hover); }
+
 /* ── Placeholder / empty state ──────────────────────────── */
 .placeholder {
   position: absolute;
@@ -531,6 +648,33 @@ textarea#input.marked::selection {
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 860px) {
   body { height: auto; }
+
+  .app { flex-direction: column; }
+
+  .rail {
+    flex: none;
+    flex-direction: row;
+    gap: 6px;
+    padding: 8px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .rail-item {
+    flex-direction: row;
+    gap: 7px;
+    padding: 7px 12px;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+
+  .rail-divider {
+    width: 1px;
+    height: auto;
+    margin: 4px 2px;
+  }
 
   .workspace {
     grid-template-columns: 1fr;

@@ -5,6 +5,28 @@ Paste JSON, get it pretty-printed. No account, no upload, no waiting.
 **Nothing leaves your browser** — parsing and formatting happen client-side in a Web Worker.
 The server in this repo only hands over static files.
 
+## Modules
+
+A slim rail on the left switches modules; the input panel is shared, so what you
+pasted survives the switch. **Formatter** is what loads on `/`.
+
+| Module | Does |
+| --- | --- |
+| Formatter | Pretty-prints with a 2-space indent, syntax highlighted |
+| CSV | Converts an array of objects to CSV — union of all keys, nested keys as dotted columns |
+| TypeScript, Minify, Diff | Listed as coming soon, not clickable |
+
+Adding a module means one `MODULES` entry in `app.js` and one mode in the worker.
+
+### CSV specifics
+
+- Input must be a JSON **array of objects**; anything else gets an explanatory error
+- Columns are the union of every object's keys, in first-seen order; missing values are empty cells
+- Nested objects flatten to `address.city`; arrays and empty objects stay as JSON in one cell
+- Quoting follows RFC 4180 (commas, quotes and newlines), rows end `\r\n`, and the download
+  carries a UTF-8 BOM so Excel does not mangle accented text
+- The table previews the first 20 rows and 40 columns; Copy and Download always give everything
+
 ## What it does (v1)
 
 - Paste JSON, or drag & drop / pick a `.json` file (up to 50MB)
@@ -38,18 +60,19 @@ Measured in Chrome on a 44.8MB file: 2.7s end to end, UI responsive throughout.
 public/           everything the browser gets
   index.html
   styles.css
-  app.js          UI wiring only
-  format-worker.js  worker shell
+  app.js          UI wiring + module registry
+  format-worker.js  worker shell, dispatches by mode
   formatter.js    pure parse/format/highlight core (no DOM — testable in Node)
+  csv.js          pure JSON -> CSV core (no DOM)
 server.js         zero-dependency static file server (Railway needs a listener on $PORT)
-test/             Node test for the formatting core, incl. a >50MB fixture
+test/             Node tests for both cores, incl. multi-MB fixtures
 ```
 
 ## Run locally
 
 ```sh
 npm start          # http://localhost:3000
-npm test           # formatting core, ~10s (builds a 52MB fixture)
+npm test           # both cores, ~10s (builds a 52MB fixture)
 ```
 
 No build step and no dependencies — `public/` can also be opened through any static server.
