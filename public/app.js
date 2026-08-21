@@ -16,6 +16,7 @@
     outputMeta: $('output-meta'),
     outputCode: $('output-code'),
     outputPre: $('output'),
+    outputPanel: $('output-panel'),
     placeholder: $('output-placeholder'),
     errorBox: $('error-box'),
     errorTitle: $('error-title'),
@@ -45,6 +46,7 @@
     formatted: '',       // full formatted output (source of truth for copy/download)
     sourceName: '',      // original file name, used to suggest a download name
     errorRange: null,    // {start, end} of the offending token in the input
+    truncated: false,    // preview shows less than the full output
     busy: false,
     requestId: 0
   };
@@ -116,6 +118,7 @@
 
   function clearOutput() {
     state.formatted = '';
+    state.truncated = false;
     el.outputCode.textContent = '';
     el.outputMeta.textContent = '';
     el.placeholder.hidden = false;
@@ -207,6 +210,7 @@
 
   function showResult(result) {
     state.formatted = result.formatted;
+    state.truncated = result.truncated;
 
     hideError();
     el.placeholder.hidden = true;
@@ -510,10 +514,34 @@
 
   el.jumpBtn.addEventListener('click', markError);
 
+  function selectOutput() {
+    var range = document.createRange();
+    range.selectNodeContents(el.outputCode);
+    var selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function ownsSelectAll(target) {
+    if (!target || !target.closest) return false;
+    if (target.closest('textarea, input')) return false;
+    return target === document.body || el.outputPanel.contains(target);
+  }
+
   document.addEventListener('keydown', function (event) {
-    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+    if (!(event.ctrlKey || event.metaKey)) return;
+
+    if (event.key === 'Enter') {
       event.preventDefault();
       format();
+      return;
+    }
+
+    if ((event.key || '').toLowerCase() === 'a' && state.formatted && ownsSelectAll(event.target)) {
+      event.preventDefault();
+      el.outputPre.focus({ preventScroll: true });
+      selectOutput();
+      if (state.truncated) toast('Preview only — use Copy for the whole document');
     }
   });
 
