@@ -296,6 +296,21 @@ textarea#input {
   white-space: pre;
 }
 
+/* Wrap mode (default on): a single long string value would otherwise push the
+   line off-screen, since JSON strings cannot contain literal newlines.
+   overflow-wrap: anywhere is what breaks giant unspaced values like base64. */
+body.wrap textarea#input,
+body.wrap .output {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.btn[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 textarea#input::placeholder { color: var(--text-faint); }
 
 textarea#input:focus-visible,

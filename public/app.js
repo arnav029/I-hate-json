@@ -24,6 +24,7 @@
     truncation: $('truncation-note'),
     formatBtn: $('format-btn'),
     copyBtn: $('copy-btn'),
+    wrapBtn: $('wrap-btn'),
     downloadBtn: $('download-btn'),
     clearBtn: $('clear-btn'),
     exampleBtn: $('example-btn'),
@@ -398,6 +399,32 @@
     toast('Downloading ' + link.download);
   }
 
+  /* ── line wrapping ───────────────────────────────────── */
+
+  // Purely visual — the stored output, copy and download are untouched.
+  // Defaults to on: one long string value (a base64 blob, an encoded payload)
+  // would otherwise run off the right edge of both panels.
+  var WRAP_KEY = 'ihj:wrap';
+
+  function setWrap(on) {
+    document.body.classList.toggle('wrap', on);
+    el.wrapBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    el.wrapBtn.textContent = on ? 'Wrap' : 'No wrap';
+    try { localStorage.setItem(WRAP_KEY, on ? '1' : '0'); } catch (err) { /* private mode */ }
+  }
+
+  function initialWrap() {
+    try {
+      var stored = localStorage.getItem(WRAP_KEY);
+      if (stored !== null) return stored === '1';
+    } catch (err) { /* storage blocked — fall through to the default */ }
+    return true;
+  }
+
+  el.wrapBtn.addEventListener('click', function () {
+    setWrap(el.wrapBtn.getAttribute('aria-pressed') !== 'true');
+  });
+
   /* ── events ──────────────────────────────────────────── */
 
   el.formatBtn.addEventListener('click', format);
@@ -483,6 +510,7 @@
 
   /* ── init ────────────────────────────────────────────── */
 
+  setWrap(initialWrap());
   updateInputMeta();
   clearOutput();
   getWorker(); // warm the worker up so the first format is not slowed by startup
