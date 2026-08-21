@@ -29,6 +29,11 @@
       <span>Minify</span>
     </button>
 
+    <button type="button" class="rail-item" data-module="diff">
+      <svg viewBox="0 0 24 24" aria-hidden="true" width="19" height="19"><rect x="3.5" y="4.5" width="7" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="4.5" width="7" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="3 2"/></svg>
+      <span>Diff</span>
+    </button>
+
     <div class="rail-divider" role="presentation"></div>
 
     <button type="button" class="rail-item" disabled title="Coming soon">
@@ -36,10 +41,7 @@
       <span>TypeScript</span>
     </button>
 
-    <button type="button" class="rail-item" disabled title="Coming soon">
-      <svg viewBox="0 0 24 24" aria-hidden="true" width="19" height="19"><rect x="3.5" y="4.5" width="7" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="4.5" width="7" height="15" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-dasharray="3 2"/></svg>
-      <span>Diff</span>
-    </button>
+
   </nav>
 
   <div class="shell">
@@ -86,6 +88,36 @@
             <button type="button" class="btn btn-ghost" id="file-chip-remove">Remove</button>
             <p class="file-chip-note">Large files are kept out of the editor so typing stays smooth. Hit the button below to process it.</p>
           </div>
+
+          <div class="diff-inputs" id="diff-inputs" hidden>
+            <div class="diff-pane" data-side="a">
+              <div class="diff-pane-head">
+                <strong>A</strong>
+                <span class="meta" id="a-meta">empty</span>
+                <button type="button" class="btn btn-ghost btn-tiny" id="a-upload">Upload</button>
+                <input type="file" id="a-file" accept=".json,.txt,application/json,text/plain" hidden>
+              </div>
+              <textarea id="a-text" spellcheck="false" autocomplete="off" placeholder="Paste the original JSON…"></textarea>
+              <div class="diff-file" id="a-card" hidden>
+                <span id="a-card-name">file.json</span>
+                <button type="button" class="btn btn-ghost btn-tiny" id="a-remove">Remove</button>
+              </div>
+            </div>
+
+            <div class="diff-pane" data-side="b">
+              <div class="diff-pane-head">
+                <strong>B</strong>
+                <span class="meta" id="b-meta">empty</span>
+                <button type="button" class="btn btn-ghost btn-tiny" id="b-upload">Upload</button>
+                <input type="file" id="b-file" accept=".json,.txt,application/json,text/plain" hidden>
+              </div>
+              <textarea id="b-text" spellcheck="false" autocomplete="off" placeholder="Paste the changed JSON…"></textarea>
+              <div class="diff-file" id="b-card" hidden>
+                <span id="b-card-name">file.json</span>
+                <button type="button" class="btn btn-ghost btn-tiny" id="b-remove">Remove</button>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="panel-foot">
@@ -117,6 +149,13 @@
             <table class="csv-table" id="csv-table">
               <thead id="csv-head"></thead>
               <tbody id="csv-body"></tbody>
+            </table>
+          </div>
+
+          <div class="diff-view" id="diff-view" tabindex="0" hidden>
+            <p class="diff-identical" id="diff-identical" hidden>No differences — these two documents hold the same value.</p>
+            <table class="diff-table" id="diff-table">
+              <tbody id="diff-body"></tbody>
             </table>
           </div>
 

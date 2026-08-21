@@ -2,20 +2,26 @@
  * Every module runs here so a 50MB document never blocks the main thread.
  * The worker also reads uploaded files, which keeps the huge string off the
  * UI thread entirely — it only ever sees the finished output.
+ *
+ * A module receives its inputs as an array of texts, so multi-input modules
+ * (diff) need nothing special from the caller beyond a second source.
  */
 'use strict';
 
-importScripts('formatter.js', 'csv.js');
+importScripts('formatter.js', 'csv.js', 'diff.js');
 
 var MODES = {
-  format: function (text, onStage) {
-    return self.JSONFormatterCore.format(text, { indent: 2, onStage: onStage });
+  format: function (texts, onStage) {
+    return self.JSONFormatterCore.format(texts[0], { indent: 2, onStage: onStage });
   },
-  minify: function (text, onStage) {
-    return self.JSONFormatterCore.minify(text, { onStage: onStage });
+  minify: function (texts, onStage) {
+    return self.JSONFormatterCore.minify(texts[0], { onStage: onStage });
   },
-  csv: function (text, onStage) {
-    return self.JSONCsvCore.convert(text, { onStage: onStage });
+  csv: function (texts, onStage) {
+    return self.JSONCsvCore.convert(texts[0], { onStage: onStage });
+  },
+  diff: function (texts, onStage) {
+    return self.JSONDiffCore.compare(texts[0], texts[1], { onStage: onStage });
   }
 };
 
@@ -23,19 +29,26 @@ function reply(msg) {
   self.postMessage(msg);
 }
 
+function readSource(source) {
+  return source.source === 'file' ? source.file.text() : Promise.resolve(source.text || '');
+}
+
 self.onmessage = function (event) {
   var data = event.data || {};
   var id = data.id;
   var mode = MODES[data.mode] ? data.mode : 'format';
+  var sources = data.sources || [];
 
   var stage = function (name) {
     reply({ type: 'stage', id: id, stage: name });
   };
 
-  var run = function (text) {
+  if (sources.some(function (source) { return source.source === 'file'; })) stage('reading');
+
+  Promise.all(sources.map(readSource)).then(function (texts) {
     var startedAt = Date.now();
     try {
-      var result = MODES[mode](text, stage);
+      var result = MODES[mode](texts, stage);
       result.type = 'result';
       result.id = id;
       result.mode = mode;
@@ -49,20 +62,12 @@ self.onmessage = function (event) {
         error: err && err.kind ? err : { kind: 'unknown', message: String(err && err.message ? err.message : err) }
       });
     }
-  };
-
-  if (data.source === 'file') {
-    stage('reading');
-    data.file.text().then(run, function (err) {
-      reply({
-        type: 'error',
-        id: id,
-        mode: mode,
-        error: { kind: 'read', message: 'Could not read that file: ' + (err && err.message ? err.message : err) }
-      });
+  }, function (err) {
+    reply({
+      type: 'error',
+      id: id,
+      mode: mode,
+      error: { kind: 'read', message: 'Could not read that file: ' + (err && err.message ? err.message : err) }
     });
-    return;
-  }
-
-  run(data.text || '');
+  });
 };

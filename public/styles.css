@@ -401,6 +401,154 @@ textarea#input:focus-visible,
 .tok-num { color: var(--tok-num); }
 .tok-lit { color: var(--tok-lit); font-weight: 600; }
 
+/* ── Diff inputs ────────────────────────────────────────── */
+.diff-inputs {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-inputs[hidden] { display: none; }
+
+.diff-pane {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-pane + .diff-pane { border-top: 1px solid var(--border); }
+
+.diff-pane-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 12px 7px 16px;
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-pane-head strong {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.diff-pane-head .btn-tiny { margin-left: auto; }
+
+.btn-tiny {
+  padding: 3px 9px;
+  font-size: 11.5px;
+  border-radius: 7px;
+}
+
+.diff-pane textarea {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 12px 16px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre;
+  overflow: auto;
+}
+
+.diff-pane textarea::placeholder { color: var(--text-faint); }
+.diff-pane textarea[hidden] { display: none; }
+
+.diff-pane textarea.marked::selection {
+  background: color-mix(in srgb, var(--danger) 55%, transparent);
+  color: var(--text);
+}
+
+.diff-file {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text-soft);
+}
+
+.diff-file[hidden] { display: none; }
+
+/* ── Diff output ────────────────────────────────────────── */
+.diff-view {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--bg-sunken);
+}
+
+.diff-view[hidden] { display: none; }
+
+.diff-view:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.diff-identical {
+  margin: 0;
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--tok-str);
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.diff-identical[hidden] { display: none; }
+
+.diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.diff-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.diff-mark {
+  width: 1.6em;
+  text-align: center;
+  font-weight: 700;
+}
+
+.diff-path { color: var(--text-soft); white-space: nowrap; }
+
+.diff-values {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: baseline;
+}
+
+.diff-value { overflow-wrap: anywhere; }
+.diff-value.is-from { color: var(--danger); text-decoration: line-through; text-decoration-thickness: 1px; }
+.diff-value.is-to { color: var(--tok-str); }
+.diff-arrow { color: var(--text-faint); }
+
+.diff-added .diff-mark { color: var(--tok-str); }
+.diff-removed .diff-mark { color: var(--danger); }
+.diff-changed .diff-mark { color: var(--tok-num); }
+.diff-added .diff-path { color: var(--text); }
+.diff-removed .diff-path { color: var(--text); }
+.diff-table tr:hover td { background: var(--bg-hover); }
+
 /* ── CSV preview ────────────────────────────────────────── */
 .csv-view {
   flex: 1;

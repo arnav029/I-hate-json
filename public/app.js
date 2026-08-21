@@ -25,6 +25,10 @@
     csvView: $('csv-view'),
     csvHead: $('csv-head'),
     csvBody: $('csv-body'),
+    diffInputs: $('diff-inputs'),
+    diffView: $('diff-view'),
+    diffBody: $('diff-body'),
+    diffIdentical: $('diff-identical'),
     placeholder: $('output-placeholder'),
     placeholderText: $('placeholder-text'),
     placeholderSub: $('placeholder-sub'),
@@ -60,6 +64,7 @@
     output: '',          // full result text, the source of truth for copy/download
     sourceName: '',      // original file name, used to suggest a download name
     errorRange: null,    // {start, end} of the offending token in the input
+    errorEditor: null,   // which editor that range belongs to
     truncated: false,    // preview shows less than the full output
     busy: false,
     requestId: 0
@@ -75,6 +80,93 @@
     '{"id":2,"name":"Grace Hopper","role":"admiral",' +
     '"address":{"city":"New York","zip":"10001"},"tags":["compilers"],"active":true}]';
 
+  var DIFF_EXAMPLE_A = '{"name":"i-hate-json","version":"1.0.0","limits":{"maxFileSizeMB":50,"indent":2},' +
+    '"modules":["format","csv"],"beta":true,"stars":null}';
+
+  var DIFF_EXAMPLE_B = '{"name":"i-hate-json","version":"1.1.0","limits":{"maxFileSizeMB":50,"indent":4},' +
+    '"modules":["format","csv","minify"],"stars":null,"license":"MIT"}';
+
+  /* ── diff panes ──────────────────────────────────────── */
+
+  function makePane(side) {
+    return {
+      side: side.toUpperCase(),
+      text: $(side + '-text'),
+      meta: $(side + '-meta'),
+      card: $(side + '-card'),
+      cardName: $(side + '-card-name'),
+      uploadBtn: $(side + '-upload'),
+      removeBtn: $(side + '-remove'),
+      fileInput: $(side + '-file'),
+      file: null
+    };
+  }
+
+  var panes = { a: makePane('a'), b: makePane('b') };
+
+  function paneInput(pane) {
+    return { label: 'Side ' + pane.side, file: pane.file, text: pane.text.value };
+  }
+
+  function updatePaneMeta(pane) {
+    if (pane.file) pane.meta.textContent = formatBytes(pane.file.size) + ' file';
+    else {
+      var len = pane.text.value.length;
+      pane.meta.textContent = len === 0 ? 'empty' : formatNumber(len) + ' chars';
+    }
+  }
+
+  function setPaneFile(pane, file) {
+    pane.file = file;
+    pane.cardName.textContent = file.name + ' · ' + formatBytes(file.size);
+    pane.card.hidden = false;
+    pane.text.hidden = true;
+    pane.text.value = '';
+    updatePaneMeta(pane);
+  }
+
+  function clearPaneFile(pane) {
+    pane.file = null;
+    pane.card.hidden = true;
+    pane.text.hidden = false;
+    updatePaneMeta(pane);
+  }
+
+  function acceptPaneFile(pane, file) {
+    if (!file) return;
+
+    if (file.size > MAX_BYTES) {
+      showError({ kind: 'too-big', message: '"' + file.name + '" is ' + formatBytes(file.size) + ' — over the 50MB limit.' });
+      return;
+    }
+
+    hideError();
+
+    if (file.size <= INLINE_FILE_LIMIT) {
+      file.text().then(function (text) {
+        clearPaneFile(pane);
+        pane.text.value = text;
+        updatePaneMeta(pane);
+      }, function (err) {
+        showError({ kind: 'read', message: String(err && err.message ? err.message : err) });
+      });
+      return;
+    }
+
+    setPaneFile(pane, file);
+  }
+
+  Object.keys(panes).forEach(function (key) {
+    var pane = panes[key];
+    pane.text.addEventListener('input', function () { updatePaneMeta(pane); });
+    pane.uploadBtn.addEventListener('click', function () { pane.fileInput.click(); });
+    pane.removeBtn.addEventListener('click', function () { clearPaneFile(pane); pane.text.focus(); });
+    pane.fileInput.addEventListener('change', function () {
+      acceptPaneFile(pane, pane.fileInput.files && pane.fileInput.files[0]);
+      pane.fileInput.value = '';
+    });
+  });
+
   /* ── modules ─────────────────────────────────────────── */
 
   var MODULES = {
@@ -87,7 +179,8 @@
       mime: 'application/json',
       tagline: 'Paste JSON. Get it formatted. Nothing leaves your browser.',
       placeholder: ['Your formatted JSON will appear here.', 'Two-space indent, syntax highlighted, ready to copy.'],
-      example: EXAMPLE,
+      example: function () { el.input.value = EXAMPLE; },
+      inputs: mainInput,
       wrappable: true,
       view: el.outputPre,
       text: function (result) { return result.formatted; },
@@ -109,7 +202,8 @@
       mime: 'application/json',
       tagline: 'Paste JSON. Squeeze every byte out. Nothing leaves your browser.',
       placeholder: ['Your minified JSON will appear here.', 'Every optional space and newline removed.'],
-      example: JSON.stringify(JSON.parse(EXAMPLE), null, 2),
+      example: function () { el.input.value = JSON.stringify(JSON.parse(EXAMPLE), null, 2); },
+      inputs: mainInput,
       wrappable: true,
       view: el.outputPre,
       text: function (result) { return result.minified; },
@@ -132,7 +226,8 @@
       mime: 'text/csv',
       tagline: 'Paste a JSON array. Get a CSV. Nothing leaves your browser.',
       placeholder: ['Your CSV preview will appear here.', 'Needs an array of objects — nested keys become dotted columns.'],
-      example: CSV_EXAMPLE,
+      example: function () { el.input.value = CSV_EXAMPLE; },
+      inputs: mainInput,
       wrappable: false,
       view: el.csvView,
       text: function (result) { return result.csv; },
@@ -145,8 +240,44 @@
         return 'Previewing the first ' + formatNumber(result.preview.length) + ' of ' +
           formatNumber(result.stats.rows) + ' rows — Copy and Download give you all of them.';
       }
+    },
+
+    diff: {
+      mode: 'diff',
+      title: 'Differences',
+      action: 'Compare',
+      download: 'Download .json',
+      extension: '.diff.json',
+      mime: 'application/json',
+      tagline: 'Paste two JSON documents. See what actually changed. Nothing leaves your browser.',
+      placeholder: ['Differences between A and B will appear here.', 'Values are compared, so key order and formatting are ignored.'],
+      example: function () {
+        panes.a.text.value = JSON.stringify(JSON.parse(DIFF_EXAMPLE_A), null, 2);
+        panes.b.text.value = JSON.stringify(JSON.parse(DIFF_EXAMPLE_B), null, 2);
+        clearPaneFile(panes.a);
+        clearPaneFile(panes.b);
+      },
+      inputs: function () { return [paneInput(panes.a), paneInput(panes.b)]; },
+      twoUp: true,
+      wrappable: false,
+      view: el.diffView,
+      text: function (result) { return JSON.stringify(result.changes, null, 2); },
+      render: renderDiff,
+      meta: function (stats) {
+        if (!stats.total) return 'identical · ' + stats.ms + 'ms';
+        return '+' + formatNumber(stats.added) + ' −' + formatNumber(stats.removed) +
+          ' ~' + formatNumber(stats.changed) + ' · ' + stats.ms + 'ms';
+      },
+      note: function (result) {
+        return 'Stopped after ' + formatNumber(result.changes.length) +
+          ' differences — these two documents have very little in common.';
+      }
     }
   };
+
+  function mainInput() {
+    return [{ label: 'The input', file: state.pendingFile, text: el.input.value }];
+  }
 
   function current() {
     return MODULES[state.module];
@@ -170,6 +301,13 @@
     el.downloadBtn.textContent = module.download;
     el.tagline.textContent = module.tagline;
     el.wrapBtn.hidden = !module.wrappable;
+
+    el.diffInputs.hidden = !module.twoUp;
+    el.input.hidden = !!module.twoUp;
+    el.uploadBtn.hidden = !!module.twoUp;
+    if (module.twoUp) el.fileChip.hidden = true;
+    else if (state.pendingFile) el.fileChip.hidden = false;
+    updateInputMeta();
 
     clearOutput();
     hideError();
@@ -216,6 +354,12 @@
   /* ── input state ─────────────────────────────────────── */
 
   function updateInputMeta() {
+    if (current().twoUp) {
+      updatePaneMeta(panes.a);
+      updatePaneMeta(panes.b);
+      el.inputMeta.textContent = 'A vs B';
+      return;
+    }
     if (state.pendingFile) {
       el.inputMeta.textContent = formatBytes(state.pendingFile.size) + ' file';
       return;
@@ -250,9 +394,12 @@
     el.outputCode.textContent = '';
     el.csvHead.innerHTML = '';
     el.csvBody.innerHTML = '';
+    el.diffBody.innerHTML = '';
+    el.diffIdentical.hidden = true;
     el.outputMeta.textContent = '';
-    el.outputPre.hidden = module.view !== el.outputPre;
-    el.csvView.hidden = module.view !== el.csvView;
+    [el.outputPre, el.csvView, el.diffView].forEach(function (view) {
+      view.hidden = view !== module.view;
+    });
     el.placeholderText.textContent = module.placeholder[0];
     el.placeholderSub.textContent = module.placeholder[1];
     el.placeholder.hidden = false;
@@ -271,21 +418,29 @@
   function clearMark() {
     state.errorRange = null;
     el.input.classList.remove('marked');
+    panes.a.text.classList.remove('marked');
+    panes.b.text.classList.remove('marked');
+  }
+
+  function errorEditor(error) {
+    if (error && error.side) return panes[error.side.toLowerCase()].text;
+    return el.input;
   }
 
   function markable(range) {
-    return !!range && !state.pendingFile && range.end <= el.input.value.length;
+    var editor = state.errorEditor;
+    return !!range && !!editor && !editor.hidden && range.end <= editor.value.length;
   }
 
-  function scrollRangeIntoView(start) {
-    var before = el.input.value.slice(0, start);
+  function scrollRangeIntoView(editor, start) {
+    var before = editor.value.slice(0, start);
     var line = before.length ? before.split('\n').length : 1;
-    var lineHeight = parseFloat(getComputedStyle(el.input).lineHeight) || 20;
+    var lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 20;
     var target = (line - 1) * lineHeight;
-    var padding = el.input.clientHeight / 3;
+    var padding = editor.clientHeight / 3;
 
-    if (target < el.input.scrollTop + padding || target > el.input.scrollTop + el.input.clientHeight - padding) {
-      el.input.scrollTop = Math.max(0, target - padding);
+    if (target < editor.scrollTop + padding || target > editor.scrollTop + editor.clientHeight - padding) {
+      editor.scrollTop = Math.max(0, target - padding);
     }
   }
 
@@ -293,10 +448,11 @@
     var range = state.errorRange;
     if (!markable(range)) return;
 
-    el.input.classList.add('marked');
-    el.input.focus({ preventScroll: true });
-    el.input.setSelectionRange(range.start, range.end);
-    scrollRangeIntoView(range.start);
+    var editor = state.errorEditor;
+    editor.classList.add('marked');
+    editor.focus({ preventScroll: true });
+    editor.setSelectionRange(range.start, range.end);
+    scrollRangeIntoView(editor, range.start);
   }
 
   var ERROR_TITLES = {
@@ -314,8 +470,10 @@
     var message = error.message;
 
     if (error.kind === 'parse' && error.line) {
-      message = (error.approximate ? 'Near line ' + error.line
-        : 'Line ' + error.line + ', column ' + error.column) + ' — ' + error.message;
+      var where = error.approximate ? 'line ' + error.line
+        : 'line ' + error.line + ', column ' + error.column;
+      message = (error.side ? 'Side ' + error.side + ', ' + where : where.charAt(0).toUpperCase() + where.slice(1)) +
+        ' — ' + error.message;
     }
 
     el.errorTitle.textContent = title;
@@ -333,6 +491,7 @@
     }
 
     el.errorBox.hidden = false;
+    state.errorEditor = errorEditor(error);
     state.errorRange = error.range || null;
     el.jumpBtn.hidden = !markable(state.errorRange);
     markError();
@@ -382,6 +541,55 @@
     el.csvView.scrollTop = 0;
   }
 
+  var DIFF_LABEL = { added: '+', removed: '−', changed: '~' };
+
+  function renderDiff(result) {
+    el.diffIdentical.hidden = !result.identical;
+
+    var body = document.createDocumentFragment();
+
+    result.changes.forEach(function (change) {
+      var tr = document.createElement('tr');
+      tr.className = 'diff-' + change.kind;
+
+      var mark = document.createElement('td');
+      mark.className = 'diff-mark';
+      mark.textContent = DIFF_LABEL[change.kind];
+      tr.appendChild(mark);
+
+      var path = document.createElement('td');
+      path.className = 'diff-path';
+      path.textContent = change.path;
+      tr.appendChild(path);
+
+      var values = document.createElement('td');
+      values.className = 'diff-values';
+      if (change.from !== undefined) values.appendChild(valueSpan('from', change.from));
+      if (change.from !== undefined && change.to !== undefined) {
+        var arrow = document.createElement('span');
+        arrow.className = 'diff-arrow';
+        arrow.textContent = '→';
+        values.appendChild(arrow);
+      }
+      if (change.to !== undefined) values.appendChild(valueSpan('to', change.to));
+      tr.appendChild(values);
+
+      body.appendChild(tr);
+    });
+
+    el.diffBody.innerHTML = '';
+    el.diffBody.appendChild(body);
+    el.diffView.scrollTop = 0;
+  }
+
+  function valueSpan(kind, text) {
+    var span = document.createElement('span');
+    span.className = 'diff-value is-' + kind;
+    span.textContent = text.length > 200 ? text.slice(0, 200) + '…' : text;
+    if (text.length > 200) span.title = text;
+    return span;
+  }
+
   function showResult(result) {
     var module = current();
 
@@ -389,7 +597,8 @@
     clearOutput();
 
     state.output = module.text(result);
-    state.truncated = !!result.truncated || (result.preview && result.stats.rows > result.preview.length);
+    state.truncated = !!result.truncated || !!result.capped ||
+      !!(result.preview && result.stats.rows > result.preview.length);
 
     module.render(result);
 
@@ -416,6 +625,7 @@
     parsing: 'Parsing…',
     formatting: 'Formatting…',
     minifying: 'Minifying…',
+    comparing: 'Comparing…',
     highlighting: 'Highlighting…',
     shaping: 'Reading rows…',
     building: 'Building CSV…'
@@ -457,58 +667,74 @@
 
   /* ── running a module ────────────────────────────────── */
 
-  function run() {
-    if (state.busy) return;
-
-    var file = state.pendingFile;
-    var text = el.input.value;
-
-    if (file && file.size > MAX_BYTES) {
-      showError({
-        kind: 'too-big',
-        message: formatBytes(file.size) + ' is over the 50MB limit. Try splitting the file first.'
-      });
-      return;
+  // Throws a displayable error rather than returning one, so every guard reads
+  // the same way regardless of how many inputs a module takes.
+  function toSource(input) {
+    if (input.file) {
+      if (input.file.size > MAX_BYTES) {
+        throw { kind: 'too-big', message: formatBytes(input.file.size) + ' is over the 50MB limit. Try splitting the file first.' };
+      }
+      return { source: 'file', file: input.file };
     }
 
     // A UTF-8 string is never fewer bytes than characters, so this catches
     // anything oversized without walking a 50MB string on the main thread.
-    if (!file && text.length > MAX_BYTES) {
-      showError({ kind: 'too-big', message: 'That input is over the 50MB limit. Try splitting it first.' });
+    if (input.text.length > MAX_BYTES) {
+      throw { kind: 'too-big', message: input.label + ' is over the 50MB limit. Try splitting it first.' };
+    }
+    if (input.text.trim() === '') {
+      throw { kind: 'empty', message: input.label + ' is empty — paste some JSON or drop a file in.' };
+    }
+    return { source: 'text', text: input.text };
+  }
+
+  function run() {
+    if (state.busy) return;
+
+    var inputs = current().inputs();
+    var sources;
+
+    try {
+      sources = inputs.map(toSource);
+    } catch (err) {
+      showError(err);
       return;
     }
 
-    if (!file && text.trim() === '') {
-      showError({ kind: 'empty', message: 'Paste some JSON or drop a file in first.' });
-      return;
-    }
+    var reading = sources.some(function (source) { return source.source === 'file'; });
 
     hideError();
     state.requestId++;
-    setBusy(true, file ? STAGE_LABEL.reading : STAGE_LABEL.parsing);
+    setBusy(true, reading ? STAGE_LABEL.reading : STAGE_LABEL.parsing);
 
     var w = getWorker();
-    if (!w) { formatOnMainThread(); return; }
+    if (!w) { runOnMainThread(sources); return; }
 
-    var message = { id: state.requestId, mode: current().mode };
-    if (file) { message.source = 'file'; message.file = file; }
-    else { message.source = 'text'; message.text = text; }
-    w.postMessage(message);
+    w.postMessage({ id: state.requestId, mode: current().mode, sources: sources });
   }
 
   // Fallback for browsers where Workers are blocked. Same cores, so behaviour
   // is identical — it just blocks the UI while it runs.
-  function formatOnMainThread() {
+  var MAIN_THREAD_MODES = {
+    format: function (texts) { return self.JSONFormatterCore.format(texts[0], { indent: 2 }); },
+    minify: function (texts) { return self.JSONFormatterCore.minify(texts[0], {}); },
+    csv: function (texts) { return self.JSONCsvCore.convert(texts[0], {}); },
+    diff: function (texts) { return self.JSONDiffCore.compare(texts[0], texts[1], {}); }
+  };
+
+  function runOnMainThread(sources) {
     loadCores(function () {
       setBusy(true);
-      setTimeout(function () {
-        var module = current();
-        var execute = function (text) {
+      var reads = sources.map(function (source) {
+        return source.source === 'file' ? source.file.text() : Promise.resolve(source.text);
+      });
+
+      Promise.all(reads).then(function (texts) {
+        // Yield once so the busy state paints before we block.
+        setTimeout(function () {
           var startedAt = Date.now();
           try {
-            var result = module.mode === 'csv' ? self.JSONCsvCore.convert(text, {})
-              : module.mode === 'minify' ? self.JSONFormatterCore.minify(text, {})
-              : self.JSONFormatterCore.format(text, { indent: 2 });
+            var result = MAIN_THREAD_MODES[current().mode](texts);
             result.stats.ms = Date.now() - startedAt;
             setBusy(false);
             showResult(result);
@@ -516,24 +742,17 @@
             setBusy(false);
             showError(err && err.kind ? err : { kind: 'unknown', message: String(err) });
           }
-        };
-
-        if (state.pendingFile) {
-          state.pendingFile.text().then(execute, function (err) {
-            setBusy(false);
-            showError({ kind: 'read', message: String(err && err.message ? err.message : err) });
-          });
-        } else {
-          execute(el.input.value);
-        }
-      }, 16);
+        }, 16);
+      }, function (err) {
+        setBusy(false);
+        showError({ kind: 'read', message: String(err && err.message ? err.message : err) });
+      });
     });
   }
 
   function loadCores(done) {
-    var pending = ['formatter.js', 'csv.js'].filter(function (src) {
-      return src === 'csv.js' ? !self.JSONCsvCore : !self.JSONFormatterCore;
-    });
+    var globals = { 'formatter.js': 'JSONFormatterCore', 'csv.js': 'JSONCsvCore', 'diff.js': 'JSONDiffCore' };
+    var pending = Object.keys(globals).filter(function (src) { return !self[globals[src]]; });
 
     if (!pending.length) { done(); return; }
 
@@ -679,6 +898,10 @@
 
   el.clearBtn.addEventListener('click', function () {
     el.input.value = '';
+    panes.a.text.value = '';
+    panes.b.text.value = '';
+    clearPaneFile(panes.a);
+    clearPaneFile(panes.b);
     state.sourceName = '';
     clearFileChip();
     clearOutput();
@@ -690,7 +913,7 @@
   el.exampleBtn.addEventListener('click', function () {
     clearFileChip();
     state.sourceName = '';
-    el.input.value = current().example;
+    current().example();
     updateInputMeta();
     run();
   });
@@ -768,7 +991,12 @@
     event.preventDefault();
     dragDepth = 0;
     el.dropOverlay.hidden = true;
-    acceptFile(event.dataTransfer.files && event.dataTransfer.files[0]);
+
+    var file = event.dataTransfer.files && event.dataTransfer.files[0];
+    if (!current().twoUp) { acceptFile(file); return; }
+
+    var pane = event.target.closest && event.target.closest('.diff-pane');
+    acceptPaneFile(pane ? panes[pane.getAttribute('data-side')] : panes.a, file);
   });
 
   /* ── init ────────────────────────────────────────────── */

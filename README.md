@@ -15,9 +15,21 @@ pasted survives the switch. **Formatter** is what loads on `/`.
 | Formatter | Pretty-prints with a 2-space indent, syntax highlighted |
 | CSV | Converts an array of objects to CSV — union of all keys, nested keys as dotted columns |
 | Minify | Strips every optional byte, reporting how much smaller the result is |
-| TypeScript, Diff | Listed as coming soon, not clickable |
+| Diff | Compares two documents structurally and lists what changed |
+| TypeScript | Listed as coming soon, not clickable |
 
 Adding a module means one `MODULES` entry in `app.js` and one mode in the worker.
+
+### Diff specifics
+
+- Compares **values, not text**: reordered keys and different indentation are not changes
+- Two input panes (A and B), each taking paste, upload or a drop onto that pane
+- Reports `added` / `removed` / `changed` against a path such as `a.b[0].c`; a parse failure
+  says which side it came from and highlights the token in that pane
+- Arrays are compared **by index** — inserting an element at the front reports every later
+  index as changed rather than as a single insertion
+- Stops at 20,000 differences so a wildly mismatched pair cannot exhaust memory
+- Copy and Download give the change list as JSON
 
 ### CSV specifics
 
@@ -65,15 +77,16 @@ public/           everything the browser gets
   format-worker.js  worker shell, dispatches by mode
   formatter.js    pure parse/format/highlight core (no DOM — testable in Node)
   csv.js          pure JSON -> CSV core (no DOM)
+  diff.js         pure structural diff core (no DOM)
 server.js         zero-dependency static file server (Railway needs a listener on $PORT)
-test/             Node tests for both cores, incl. multi-MB fixtures
+test/             Node tests for every core, incl. multi-MB fixtures
 ```
 
 ## Run locally
 
 ```sh
 npm start          # http://localhost:3000
-npm test           # both cores, ~10s (builds a 52MB fixture)
+npm test           # every core, ~15s (builds multi-MB fixtures)
 ```
 
 No build step and no dependencies — `public/` can also be opened through any static server.
