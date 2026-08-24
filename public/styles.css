@@ -909,3 +909,64 @@ textarea#input.marked::selection {
 @media (max-width: 860px) {
   .prose { padding: 28px 16px 4px; font-size: 14.5px; }
 }
+
+/* ── Feedback ───────────────────────────────────────────── */
+.feedback {
+  max-width: 74ch;
+  margin: 0 auto;
+  padding: 34px 24px 8px;
+  color: var(--text-soft);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.feedback h2 {
+  margin: 0 0 10px;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+  color: var(--text);
+}
+
+.feedback p { margin: 0 0 16px; }
+
+.feedback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.feedback-btn {
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-panel);
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 550;
+  text-decoration: none;
+  transition: background .15s ease, border-color .15s ease;
+}
+
+.feedback-btn:hover { background: var(--bg-hover); }
+
+.feedback-btn-primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: #fff;
+}
+
+.feedback-btn-primary:hover { background: var(--accent-hover); }
+
+.feedback-note {
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.feedback-note a { color: var(--accent); }
+
+@media (max-width: 860px) {
+  .feedback { padding: 26px 16px 4px; font-size: 14.5px; }
+  .feedback-actions .feedback-btn { flex: 1; text-align: center; }
+}
