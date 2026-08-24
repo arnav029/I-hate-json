@@ -959,13 +959,6 @@ textarea#input.marked::selection {
 
 .feedback-btn-primary:hover { background: var(--accent-hover); }
 
-.feedback-note {
-  font-size: 13px;
-  color: var(--text-faint);
-}
-
-.feedback-note a { color: var(--accent); }
-
 @media (max-width: 860px) {
   .feedback { padding: 26px 16px 4px; font-size: 14.5px; }
   .feedback-actions .feedback-btn { flex: 1; text-align: center; }
