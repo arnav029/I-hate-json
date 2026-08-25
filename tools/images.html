@@ -2,14 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Open Graph card generator — I Hate JSON</title>
+<title>Image generator — I Hate JSON</title>
 <!--
-  Draws the 1200x630 social card for every route and lets you save them into
-  public/og/. Open this file in a browser, click "Download all", move the four
-  PNGs into public/og/. No dependencies, no build step — same as everything else.
+  Draws every PNG the site serves: the 1200x630 social card for each route, and
+  the app icons the web manifest points at. Open this file in a browser, click
+  "Download all", move the files into public/og/ and public/icons/.
+  No dependencies, no build step — same as everything else.
 
-  The cards only change when a route's name or tagline changes, which is why the
-  output is committed rather than generated at request time.
+  These only change when a route's name, tagline or the brand mark changes,
+  which is why the output is committed rather than generated at request time.
 -->
 <style>
   body {
@@ -27,7 +28,7 @@
     color: #969cae;
     margin-bottom: 8px;
   }
-  canvas { width: 600px; height: 315px; border-radius: 6px; display: block; }
+  canvas { border-radius: 6px; display: block; max-width: 600px; height: auto; }
   button {
     font: 600 14px system-ui, sans-serif;
     background: #5b5bd6; color: #fff; border: 0;
@@ -39,14 +40,15 @@
 </head>
 <body>
 
-<h1>Open Graph cards</h1>
+<h1>Generated images</h1>
 <p>
-  One 1200×630 PNG per route. Click below, then move the downloaded files into
-  <code>public/og/</code>. Filenames match each route's <code>module</code> name,
-  which is what <code>server.js</code> builds the <code>og:image</code> URL from.
+  One 1200×630 social card per route, plus the app icons. Click below, then move
+  each file into the folder named in its caption. Card filenames match each
+  route's <code>module</code> name, which is what <code>server.js</code> builds
+  the <code>og:image</code> URL from.
 </p>
 
-<button id="download-all" type="button">Download all four</button>
+<button id="download-all" type="button">Download all</button>
 
 <div id="cards"></div>
 
@@ -169,33 +171,77 @@ function draw(canvas, card) {
   ctx.fillText('ihatejson.com', 76, 558);
 }
 
+/*
+ * App icons. `maskable` has to survive being cropped to a circle, so its mark
+ * sits well inside the safe zone and the background bleeds to every edge; the
+ * others get the rounded square the favicon already uses.
+ */
+var ICONS = [
+  { file: 'icon-192', size: 192, radius: 0.22, mark: 0.46 },
+  { file: 'icon-512', size: 512, radius: 0.22, mark: 0.46 },
+  { file: 'maskable-512', size: 512, radius: 0, mark: 0.34 },
+  // iOS applies its own mask, so this one bleeds to the edges too.
+  { file: 'apple-touch-icon', size: 180, radius: 0, mark: 0.46 }
+];
+
+function drawIcon(canvas, icon) {
+  var ctx = canvas.getContext('2d');
+  var s = icon.size;
+
+  ctx.clearRect(0, 0, s, s);
+  ctx.fillStyle = ACCENT;
+  if (icon.radius) {
+    roundRect(ctx, 0, 0, s, s, s * icon.radius);
+    ctx.fill();
+  } else {
+    ctx.fillRect(0, 0, s, s);
+  }
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 ' + Math.round(s * icon.mark) + 'px ' + MONO;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // The glyph's optical centre sits slightly below the box's.
+  ctx.fillText('{}', s / 2, s / 2 + s * 0.02);
+}
+
 var made = [];
 
-CARDS.forEach(function (card) {
+function mount(caption, width, height, paint, file) {
   var figure = document.createElement('figure');
   figure.className = 'card';
   figure.style.margin = '0 0 28px';
 
-  var caption = document.createElement('figcaption');
-  caption.textContent = 'public/og/' + card.file + '.png';
+  var label = document.createElement('figcaption');
+  label.textContent = caption;
 
   var canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = width;
+  canvas.height = height;
 
-  figure.appendChild(caption);
+  figure.appendChild(label);
   figure.appendChild(canvas);
   document.getElementById('cards').appendChild(figure);
 
-  draw(canvas, card);
-  made.push({ file: card.file, canvas: canvas });
+  paint(canvas);
+  made.push({ file: file, canvas: canvas });
+}
+
+CARDS.forEach(function (card) {
+  mount('public/og/' + card.file + '.png', W, H,
+    function (canvas) { draw(canvas, card); }, 'og/' + card.file);
+});
+
+ICONS.forEach(function (icon) {
+  mount('public/icons/' + icon.file + '.png', icon.size, icon.size,
+    function (canvas) { drawIcon(canvas, icon); }, 'icons/' + icon.file);
 });
 
 document.getElementById('download-all').addEventListener('click', function () {
   made.forEach(function (item, i) {
     setTimeout(function () {
       var link = document.createElement('a');
-      link.download = item.file + '.png';
+      link.download = item.file.split('/').pop() + '.png';
       link.href = item.canvas.toDataURL('image/png');
       document.body.appendChild(link);
       link.click();
@@ -205,7 +251,7 @@ document.getElementById('download-all').addEventListener('click', function () {
 });
 
 // Lets a script drive this page headlessly instead of clicking.
-window.__ogCards = made;
+window.__images = made;
 </script>
 
 </body>

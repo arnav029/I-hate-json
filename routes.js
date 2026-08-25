@@ -13,7 +13,7 @@ var routes = [
   {
     path: '/',
     module: 'formatter',
-    updated: '2026-08-24',
+    updated: '2026-08-25',
     title: 'JSON Formatter — format and beautify JSON online, up to 50MB',
     description: 'Paste JSON or drop a file and get it pretty-printed instantly, with syntax ' +
       'highlighting and errors pinpointed to the exact token. Handles 50MB files without freezing. ' +
@@ -41,7 +41,7 @@ var routes = [
       { q: 'Is my JSON uploaded to a server?', a: 'No. Formatting happens entirely in your browser using a Web Worker. Nothing is transmitted, stored or logged.' },
       { q: 'What is the maximum file size?', a: 'A hard cap of 50MB, enforced in the browser with a clear message rather than a silent hang. Files above 1MB stay out of the editor so typing remains smooth.' },
       { q: 'What indentation does it use?', a: 'Two spaces. The output is exactly what <code>JSON.stringify(value, null, 2)</code> produces, so it matches most linters and editors out of the box.' },
-      { q: 'Does it work offline?', a: 'Once the page has loaded, yes — there are no network calls during formatting. The whole app is a few small static files with no dependencies.' }
+      { q: 'Does it work offline?', a: 'Yes, properly — not just once loaded. After your first visit the whole site is stored on your device, so every tool keeps working with no connection at all, and a repeat visit loads without touching the network. You can add it to your home screen or dock like any other app.' }
     ]
   },
 
