@@ -7,6 +7,8 @@
 
 const assert = require('assert');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 process.env.SITE_ORIGIN = 'https://www.ihatejson.com';
 const { server } = require('../server');
@@ -127,6 +129,112 @@ test('sitemap.xml lists every route once', async (port) => {
   assert.deepStrictEqual(locations, routes.map((r) => 'https://www.ihatejson.com' + r.path));
 });
 
+test('the privacy claim is enforced by a CSP, not just stated', async (port) => {
+  const res = await get(port, '/');
+  const csp = res.headers['content-security-policy'];
+
+  assert.ok(csp, 'sends a CSP');
+  // The whole point: no script on this origin can send anything anywhere.
+  assert.ok(/connect-src 'none'/.test(csp), 'connect-src is none');
+  assert.ok(/default-src 'self'/.test(csp), 'default-src is self');
+  assert.ok(/worker-src 'self'/.test(csp), 'workers are still allowed');
+  assert.ok(/img-src 'self' data:/.test(csp), 'the inline SVG favicon still loads');
+  assert.ok(!/unsafe-inline|unsafe-eval/.test(csp), 'no escape hatches');
+
+  assert.strictEqual(res.headers['x-content-type-options'], 'nosniff');
+  assert.strictEqual(res.headers['referrer-policy'], 'no-referrer');
+  assert.ok(/camera=\(\)/.test(res.headers['permissions-policy']), 'permissions are denied');
+  assert.strictEqual(res.headers['cross-origin-opener-policy'], 'same-origin');
+  // Browsers ignore HSTS over plain HTTP, so it is not announced there.
+  assert.ok(!res.headers['strict-transport-security'], 'no HSTS without TLS');
+});
+
+test('every input and output pane has an accessible name', async (port) => {
+  for (const route of routes) {
+    const res = await get(port, route.path);
+    for (const id of ['input', 'a-text', 'b-text']) {
+      const tag = new RegExp('<textarea id="' + id + '"[^>]*>').exec(res.body);
+      assert.ok(tag, route.path + ' has #' + id);
+      assert.ok(/aria-label="[^"]+"/.test(tag[0]), route.path + ' #' + id + ' is labelled');
+    }
+    assert.ok(/<a class="skip-link" href="#input-panel">/.test(res.body), route.path + ' has a skip link');
+    assert.ok(/id="input-panel" tabindex="-1"/.test(res.body), route.path + ' skip target takes focus');
+  }
+});
+
+test('every page has a share card that exists on disk', async (port) => {
+  const seen = new Set();
+
+  for (const route of routes) {
+    const res = await get(port, route.path);
+    const image = pick(res.body, /<meta property="og:image" content="([^"]+)">/);
+
+    assert.ok(image, route.path + ' has an og:image');
+    assert.ok(/name="twitter:card" content="summary_large_image"/.test(res.body),
+      route.path + ' asks for a large card');
+
+    const file = path.join(__dirname, '..', 'public', image.replace(/^https?:\/\/[^/]+/, ''));
+    assert.ok(fs.existsSync(file), 'missing card: ' + file + ' (regenerate with tools/og.html)');
+    assert.ok(fs.statSync(file).size > 1024, image + ' looks empty');
+
+    seen.add(image);
+  }
+
+  assert.strictEqual(seen.size, routes.length, 'each tool has its own card');
+});
+
+test('assets are versioned and cached only when the version matches', async (port) => {
+  const home = await get(port, '/');
+  const version = pick(home.body, /src="app\.js\?v=([a-f0-9]+)"/);
+  assert.ok(version, 'app.js is referenced with a content hash');
+  assert.ok(/href="styles\.css\?v=[a-f0-9]+"/.test(home.body), 'so is styles.css');
+
+  // The worker and its cores are versioned through a body attribute rather than
+  // an inline script, which is what lets the CSP stay nonce-free.
+  const manifest = pick(home.body, /data-assets="([^"]+)"/);
+  assert.ok(manifest, 'the page carries an asset manifest');
+  for (const name of ['format-worker.js', 'formatter.js', 'csv.js', 'diff.js']) {
+    assert.ok(new RegExp(name + ':[a-f0-9]+').test(manifest), manifest + ' covers ' + name);
+  }
+
+  const matched = await get(port, '/app.js?v=' + version);
+  assert.strictEqual(matched.headers['cache-control'], 'public, max-age=31536000, immutable');
+
+  const stale = await get(port, '/app.js?v=00000000');
+  assert.strictEqual(stale.headers['cache-control'], 'no-cache', 'a stale hash revalidates');
+
+  const bare = await get(port, '/app.js');
+  assert.strictEqual(bare.headers['cache-control'], 'no-cache', 'an unversioned URL revalidates');
+});
+
+test('an unknown URL gets a real page, not nine bytes of plain text', async (port) => {
+  const res = await get(port, '/json-fromatter');
+
+  assert.strictEqual(res.status, 404);
+  assert.ok(/text\/html/.test(res.headers['content-type']), 'renders HTML');
+  assert.strictEqual(res.headers['x-robots-tag'], 'noindex');
+  assert.ok(/<meta name="robots" content="noindex, follow">/.test(res.body));
+  assert.ok(!/rel="canonical"/.test(res.body), 'a 404 does not canonicalise itself');
+  assert.ok(!/application\/ld\+json/.test(res.body), 'and carries no structured data');
+
+  for (const route of routes) {
+    assert.ok(res.body.includes('href="' + route.path + '"'), '404 links to ' + route.path);
+  }
+});
+
+test('sitemap dates come from the content, not the clock', async (port) => {
+  const res = await get(port, '/sitemap.xml');
+  const dates = (res.body.match(/<lastmod>([^<]+)<\/lastmod>/g) || [])
+    .map((d) => d.replace(/<\/?lastmod>/g, ''));
+
+  assert.strictEqual(dates.length, routes.length);
+  assert.deepStrictEqual(dates, routes.map((r) => r.updated));
+
+  const today = new Date().toISOString().slice(0, 10);
+  assert.ok(dates.every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)), 'dates are well formed');
+  assert.ok(dates.some((d) => d !== today), 'lastmod is not just stamped with today');
+});
+
 test('static assets and unknown paths still behave', async (port) => {
   const app = await get(port, '/app.js');
   assert.strictEqual(app.status, 200);
@@ -134,6 +242,7 @@ test('static assets and unknown paths still behave', async (port) => {
 
   const missing = await get(port, '/nope');
   assert.strictEqual(missing.status, 404);
+  assert.ok(missing.body.length > 1000, 'the 404 is a page, not a stub');
 
   const traversal = await get(port, '/%2e%2e/server.js');
   assert.ok(traversal.status === 400 || traversal.status === 404, 'traversal blocked');

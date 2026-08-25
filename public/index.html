@@ -12,6 +12,8 @@
 </head>
 <body>
 
+<a class="skip-link" href="#input-panel">Skip to the input</a>
+
 <div class="app">
 
   <nav class="rail" aria-label="Modules">
@@ -64,7 +66,7 @@
     <main class="workspace">
 
       <!-- ── Input ─────────────────────────────────────────── -->
-      <section class="panel" id="input-panel" aria-labelledby="input-title">
+      <section class="panel" id="input-panel" tabindex="-1" aria-labelledby="input-title">
         <div class="panel-head">
           <h2 id="input-title">Input</h2>
           <span class="meta" id="input-meta">empty</span>
@@ -77,7 +79,7 @@
         </div>
 
         <div class="panel-body">
-          <textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off"
+          <textarea id="input" aria-label="JSON input" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off"
             placeholder='Paste JSON here…&#10;&#10;{ "hello": "world", "items": [1, 2, 3] }&#10;&#10;…or drop a .json file anywhere on this page.'></textarea>
 
           <div class="file-chip" id="file-chip" hidden>
@@ -98,7 +100,7 @@
                 <button type="button" class="btn btn-ghost btn-tiny" id="a-upload">Upload</button>
                 <input type="file" id="a-file" accept=".json,.txt,application/json,text/plain" hidden>
               </div>
-              <textarea id="a-text" spellcheck="false" autocomplete="off" placeholder="Paste the original JSON…"></textarea>
+              <textarea id="a-text" aria-label="Side A — the original JSON" spellcheck="false" autocomplete="off" placeholder="Paste the original JSON…"></textarea>
               <div class="diff-file" id="a-card" hidden>
                 <span id="a-card-name">file.json</span>
                 <button type="button" class="btn btn-ghost btn-tiny" id="a-remove">Remove</button>
@@ -112,7 +114,7 @@
                 <button type="button" class="btn btn-ghost btn-tiny" id="b-upload">Upload</button>
                 <input type="file" id="b-file" accept=".json,.txt,application/json,text/plain" hidden>
               </div>
-              <textarea id="b-text" spellcheck="false" autocomplete="off" placeholder="Paste the changed JSON…"></textarea>
+              <textarea id="b-text" aria-label="Side B — the changed JSON" spellcheck="false" autocomplete="off" placeholder="Paste the changed JSON…"></textarea>
               <div class="diff-file" id="b-card" hidden>
                 <span id="b-card-name">file.json</span>
                 <button type="button" class="btn btn-ghost btn-tiny" id="b-remove">Remove</button>
@@ -144,16 +146,16 @@
         </div>
 
         <div class="panel-body">
-          <pre class="output" id="output" tabindex="0"><code id="output-code"></code></pre>
+          <pre class="output" id="output" tabindex="0" aria-label="Formatted output"><code id="output-code"></code></pre>
 
-          <div class="csv-view" id="csv-view" tabindex="0" hidden>
+          <div class="csv-view" id="csv-view" tabindex="0" aria-label="CSV preview" hidden>
             <table class="csv-table" id="csv-table">
               <thead id="csv-head"></thead>
               <tbody id="csv-body"></tbody>
             </table>
           </div>
 
-          <div class="diff-view" id="diff-view" tabindex="0" hidden>
+          <div class="diff-view" id="diff-view" tabindex="0" aria-label="Differences between A and B" hidden>
             <p class="diff-identical" id="diff-identical" hidden>No differences — these two documents hold the same value.</p>
             <table class="diff-table" id="diff-table">
               <tbody id="diff-body"></tbody>
