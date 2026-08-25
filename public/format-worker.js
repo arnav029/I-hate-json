@@ -8,7 +8,27 @@
  */
 'use strict';
 
-importScripts('formatter.js', 'csv.js', 'diff.js');
+/*
+ * app.js passes each core's content hash on this worker's query string, so the
+ * cores can be cached for a year alongside everything else. Without it (a worker
+ * started some other way) the plain names still resolve.
+ */
+var CORE_VERSIONS = (function () {
+  var map = {};
+  var match = /[?&]c=([^&]*)/.exec(self.location.search || '');
+  if (!match) return map;
+  decodeURIComponent(match[1]).split(',').forEach(function (pair) {
+    var at = pair.lastIndexOf(':');
+    if (at > 0) map[pair.slice(0, at)] = pair.slice(at + 1);
+  });
+  return map;
+})();
+
+function core(name) {
+  return CORE_VERSIONS[name] ? name + '?v=' + CORE_VERSIONS[name] : name;
+}
+
+importScripts(core('formatter.js'), core('csv.js'), core('diff.js'));
 
 var MODES = {
   format: function (texts, onStage) {

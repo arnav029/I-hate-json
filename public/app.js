@@ -14,6 +14,41 @@
 
   var $ = function (id) { return document.getElementById(id); };
 
+  /*
+   * Asset versions come in on a body attribute rather than an inline script, so
+   * the page needs no CSP nonce. Each name maps to a content hash; appending it
+   * lets the server cache the file for a year and still serve a new one the
+   * moment it changes. Missing manifest (opened as a bare file) falls back to
+   * the unversioned name.
+   */
+  var ASSETS = (function () {
+    var map = {};
+    (document.body.getAttribute('data-assets') || '').split(',').forEach(function (pair) {
+      var at = pair.lastIndexOf(':');
+      if (at > 0) map[pair.slice(0, at)] = pair.slice(at + 1);
+    });
+    return map;
+  })();
+
+  function assetUrl(name) {
+    return ASSETS[name] ? name + '?v=' + ASSETS[name] : name;
+  }
+
+  var CORES = ['formatter.js', 'csv.js', 'diff.js'];
+
+  // The worker cannot read the document, so it is handed its cores' versions on
+  // its own query string and rebuilds the importScripts URLs from them.
+  function workerUrl() {
+    var params = [];
+    if (ASSETS['format-worker.js']) params.push('v=' + ASSETS['format-worker.js']);
+
+    var cores = CORES.filter(function (name) { return ASSETS[name]; })
+      .map(function (name) { return name + ':' + ASSETS[name]; }).join(',');
+    if (cores) params.push('c=' + encodeURIComponent(cores));
+
+    return 'format-worker.js' + (params.length ? '?' + params.join('&') : '');
+  }
+
   var el = {
     input: $('input'),
     inputMeta: $('input-meta'),
@@ -619,7 +654,7 @@
   function getWorker() {
     if (worker || workerBroken) return worker;
     try {
-      worker = new Worker('format-worker.js');
+      worker = new Worker(workerUrl());
       worker.onmessage = onWorkerMessage;
       worker.onerror = function () {
         workerBroken = true;
@@ -734,14 +769,14 @@
 
   function loadCores(done) {
     var globals = { 'formatter.js': 'JSONFormatterCore', 'csv.js': 'JSONCsvCore', 'diff.js': 'JSONDiffCore' };
-    var pending = Object.keys(globals).filter(function (src) { return !self[globals[src]]; });
+    var pending = CORES.filter(function (src) { return !self[globals[src]]; });
 
     if (!pending.length) { done(); return; }
 
     var remaining = pending.length;
     pending.forEach(function (src) {
       var script = document.createElement('script');
-      script.src = src;
+      script.src = assetUrl(src);
       script.onload = function () { if (--remaining === 0) done(); };
       script.onerror = function () {
         setBusy(false);

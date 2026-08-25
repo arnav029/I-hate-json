@@ -963,3 +963,27 @@ textarea#input.marked::selection {
   .feedback { padding: 26px 16px 4px; font-size: 14.5px; }
   .feedback-actions .feedback-btn { flex: 1; text-align: center; }
 }
+
+/* ── skip link ───────────────────────────────────────── */
+
+/* Off-screen until focused, so keyboard users can jump the module rail
+   instead of tabbing through it on every page. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 10px 16px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 0 0 8px 0;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+#input-panel:focus { outline: none; }

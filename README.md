@@ -86,8 +86,10 @@ public/           everything the browser gets
   formatter.js    pure parse/format/highlight core (no DOM — testable in Node)
   csv.js          pure JSON -> CSV core (no DOM)
   diff.js         pure structural diff core (no DOM)
+  og/             1200×630 social cards, one per route
 routes.js         per-route metadata and page copy (server-side only)
 server.js         zero-dependency static server + per-route rendering
+tools/og.html     regenerates public/og/ — open it, click, move the files
 test/             Node tests for every core, incl. multi-MB fixtures
 ```
 
@@ -101,13 +103,53 @@ npm test           # every core, ~15s (builds multi-MB fixtures)
 No build step and no dependencies. `public/` is plain static files, but the per-route
 titles, canonical tags and page copy are applied by `server.js`, so serve it through that.
 
+## The privacy claim is enforced, not just stated
+
+"Nothing leaves your browser" is a promise you would otherwise have to take on trust.
+The server sends a Content Security Policy with **`connect-src 'none'`**, so no script on
+this origin can open a fetch, XHR, WebSocket or beacon to anywhere — including back to
+this server. Even a compromised deploy could not exfiltrate what you pasted.
+
+```
+default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;
+font-src 'self'; worker-src 'self'; manifest-src 'self'; connect-src 'none';
+object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+```
+
+No `unsafe-inline` and no nonce: there are no inline scripts, and asset versions reach
+`app.js` on a `data-` attribute rather than through a generated `<script>` block.
+Verified in Chrome — the Web Worker and its `importScripts` run fine under this policy,
+while `fetch()` to any host, same-origin included, is blocked.
+
+Also sent: `Strict-Transport-Security` (over TLS only), `Permissions-Policy` denying
+camera/mic/geolocation/USB/payment, `Cross-Origin-Opener-Policy`, `X-Content-Type-Options`
+and `Referrer-Policy: no-referrer`.
+
+## Caching
+
+Assets are referenced with a content hash — `app.js?v=e16aab0f` — and a URL whose hash
+still matches the file is served `max-age=31536000, immutable`. A stale or missing hash
+revalidates instead. Hashes are recomputed when a file's mtime moves, so edit-and-reload
+works with no build step.
+
+The hashes for the worker and its three cores travel on `<body data-assets>`; `app.js`
+builds the worker URL from them and passes the core versions on the worker's own query
+string, which is how `importScripts` gets versioned without an inline script.
+
 ## SEO
 
 `server.js` substitutes per-route values from `routes.js` into `public/index.html`:
-title, meta description, `<h1>`, canonical, Open Graph and Twitter tags,
-`SoftwareApplication` + `FAQPage` JSON-LD, and 300+ words of page copy with an FAQ.
-`/robots.txt` and `/sitemap.xml` are generated from the same table, so adding a route
-updates everything at once.
+title, meta description, `<h1>`, canonical, Open Graph and Twitter tags, a
+`summary_large_image` card from `public/og/`, `SoftwareApplication` + `FAQPage` JSON-LD,
+and 300+ words of page copy with an FAQ. `/robots.txt` and `/sitemap.xml` are generated
+from the same table, so adding a route updates everything at once.
+
+Each route carries an `updated` date that becomes its `<lastmod>`. **Bump it by hand when
+you change that page's copy** — a sitemap that stamps every URL with today's date on every
+request teaches crawlers to ignore the field.
+
+Anything that does not resolve renders a real 404 page — `noindex`, no canonical, no
+structured data, and links to every tool — rather than a plain-text stub.
 
 Duplicate URLs (`/json-formatter`, `/index.html`, trailing slashes) 301 to the canonical
 path. `SITE_ORIGIN` sets the origin used in canonical tags and the sitemap

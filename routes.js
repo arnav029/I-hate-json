@@ -13,6 +13,7 @@ var routes = [
   {
     path: '/',
     module: 'formatter',
+    updated: '2026-08-24',
     title: 'JSON Formatter — format and beautify JSON online, up to 50MB',
     description: 'Paste JSON or drop a file and get it pretty-printed instantly, with syntax ' +
       'highlighting and errors pinpointed to the exact token. Handles 50MB files without freezing. ' +
@@ -47,6 +48,7 @@ var routes = [
   {
     path: '/json-to-csv',
     module: 'csv',
+    updated: '2026-08-24',
     title: 'JSON to CSV Converter — nested objects to columns, in your browser',
     description: 'Convert a JSON array of objects to CSV online. Nested objects become dotted ' +
       'columns, missing keys become empty cells, and quoting follows RFC 4180. Runs entirely ' +
@@ -83,6 +85,7 @@ var routes = [
   {
     path: '/json-minifier',
     module: 'minify',
+    updated: '2026-08-24',
     title: 'JSON Minifier — compress JSON online and see the bytes saved',
     description: 'Minify JSON in your browser: strip every optional space and newline and see ' +
       'exactly how many bytes you saved. Handles files up to 50MB. Nothing is uploaded.',
@@ -116,6 +119,7 @@ var routes = [
   {
     path: '/json-diff',
     module: 'diff',
+    updated: '2026-08-24',
     title: 'JSON Diff — compare two JSON files structurally, online',
     description: 'Compare two JSON documents and see exactly what changed. A structural diff, so ' +
       'reordered keys and different indentation are not treated as changes. Runs entirely in your browser.',
@@ -150,6 +154,25 @@ var routes = [
   }
 ];
 
+// Rendered for anything that does not resolve, so a stale or mistyped link lands
+// on a page with a way back into the tools rather than nine bytes of plain text.
+var notFound = {
+  path: '/404',
+  module: 'formatter',
+  noindex: true,
+  title: 'Page not found — I Hate JSON',
+  description: 'That URL does not exist. Every tool on this site is listed below.',
+  heading: 'That page does not exist',
+  keywords: '',
+  content: [
+    '<h2>Nothing lives at that address</h2>',
+    '<p>The link may be out of date, or the address may have a typo in it. Nothing here needs an ',
+    'account or a session, so there is nothing to recover — pick a tool below and carry on.</p>',
+    '<p>If you followed a link from somewhere on this site, that is a bug worth telling me about; ',
+    'there is a link to do that at the bottom of the page.</p>'
+  ].join('')
+};
+
 // Keyword-bearing URL people may try; the formatter itself lives at /.
 var redirects = {
   '/json-formatter': '/',
@@ -159,6 +182,7 @@ var redirects = {
 
 module.exports = {
   routes: routes,
+  notFound: notFound,
   redirects: redirects,
   byPath: routes.reduce(function (map, route) {
     map[route.path] = route;

@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Open Graph card generator — I Hate JSON</title>
+<!--
+  Draws the 1200x630 social card for every route and lets you save them into
+  public/og/. Open this file in a browser, click "Download all", move the four
+  PNGs into public/og/. No dependencies, no build step — same as everything else.
+
+  The cards only change when a route's name or tagline changes, which is why the
+  output is committed rather than generated at request time.
+-->
+<style>
+  body {
+    margin: 0;
+    padding: 32px;
+    background: #14161d;
+    color: #e7e9f0;
+    font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  p { margin: 0 0 24px; color: #969cae; max-width: 70ch; }
+  .card { margin-bottom: 28px; }
+  .card figcaption {
+    font: 12px ui-monospace, Consolas, monospace;
+    color: #969cae;
+    margin-bottom: 8px;
+  }
+  canvas { width: 600px; height: 315px; border-radius: 6px; display: block; }
+  button {
+    font: 600 14px system-ui, sans-serif;
+    background: #5b5bd6; color: #fff; border: 0;
+    padding: 10px 18px; border-radius: 6px; cursor: pointer;
+  }
+  button:hover { background: #4a4ac4; }
+  button:focus-visible { outline: 2px solid #a5a5f0; outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Open Graph cards</h1>
+<p>
+  One 1200×630 PNG per route. Click below, then move the downloaded files into
+  <code>public/og/</code>. Filenames match each route's <code>module</code> name,
+  which is what <code>server.js</code> builds the <code>og:image</code> URL from.
+</p>
+
+<button id="download-all" type="button">Download all four</button>
+
+<div id="cards"></div>
+
+<script>
+'use strict';
+
+var W = 1200;
+var H = 630;
+
+var CARDS = [
+  { file: 'formatter', title: 'JSON Formatter', tagline: 'Paste, format, done — up to 50MB.' },
+  { file: 'csv',       title: 'JSON to CSV',    tagline: 'Arrays of objects, converted to columns.' },
+  { file: 'minify',    title: 'JSON Minifier',  tagline: 'Strip every spare byte, see what you saved.' },
+  { file: 'diff',      title: 'JSON Diff',      tagline: 'Compare two documents structurally.' }
+];
+
+var INK       = '#eef0f6';
+var MUTED     = '#8b93a8';
+var BG        = '#0f1117';
+var PANEL     = '#161a23';
+var ACCENT    = '#7c7cf0';
+var TOK_KEY   = '#7fa8ff';
+var TOK_STR   = '#6fd898';
+var TOK_NUM   = '#ffab6b';
+var TOK_LIT   = '#c99dff';
+
+var SANS = '"Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif';
+var MONO = 'Consolas, "Cascadia Mono", ui-monospace, "SF Mono", Menlo, monospace';
+
+// The snippet in the right margin — same shape as the site's own Example button.
+var SNIPPET = [
+  [['{', INK]],
+  [['  "name"', TOK_KEY], [': ', MUTED], ['"i-hate-json"', TOK_STR], [',', MUTED]],
+  [['  "private"', TOK_KEY], [': ', MUTED], ['true', TOK_LIT], [',', MUTED]],
+  [['  "limits"', TOK_KEY], [': {', MUTED]],
+  [['    "maxFileSizeMB"', TOK_KEY], [': ', MUTED], ['50', TOK_NUM], [',', MUTED]],
+  [['    "indent"', TOK_KEY], [': ', MUTED], ['2', TOK_NUM]],
+  [['  },', MUTED]],
+  [['  "runsOnServer"', TOK_KEY], [': ', MUTED], ['false', TOK_LIT], [',', MUTED]],
+  [['  "stars"', TOK_KEY], [': ', MUTED], ['null', TOK_LIT]],
+  [['}', INK]]
+];
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function draw(canvas, card) {
+  var ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+
+  // Accent spine down the left edge.
+  ctx.fillStyle = ACCENT;
+  ctx.fillRect(0, 0, 14, H);
+
+  // Sunken panel behind the code sample, bled off the right edge.
+  ctx.fillStyle = PANEL;
+  roundRect(ctx, 700, 96, 560, H - 192, 14);
+  ctx.fill();
+
+  ctx.save();
+  roundRect(ctx, 700, 96, 500, H - 192, 14);
+  ctx.clip();
+  ctx.font = '20px ' + MONO;
+  ctx.textBaseline = 'alphabetic';
+  SNIPPET.forEach(function (line, row) {
+    var x = 736;
+    var y = 148 + row * 34;
+    line.forEach(function (run) {
+      ctx.fillStyle = run[1];
+      ctx.fillText(run[0], x, y);
+      x += ctx.measureText(run[0]).width;
+    });
+  });
+  ctx.restore();
+
+  // Brand mark: the same { } that serves as the favicon.
+  ctx.fillStyle = ACCENT;
+  roundRect(ctx, 76, 88, 56, 56, 14);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 26px ' + MONO;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('{}', 104, 117);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = MUTED;
+  ctx.font = '600 20px ' + SANS;
+  ctx.letterSpacing = '3px';
+  ctx.fillText('I HATE JSON', 150, 125);
+  ctx.letterSpacing = '0px';
+
+  // Title.
+  ctx.fillStyle = INK;
+  ctx.font = '700 78px ' + SANS;
+  ctx.fillText(card.title, 76, 320);
+
+  // Tagline.
+  ctx.fillStyle = MUTED;
+  ctx.font = '400 30px ' + SANS;
+  ctx.fillText(card.tagline, 76, 372);
+
+  // Footer: the promise, then the domain.
+  ctx.fillStyle = ACCENT;
+  ctx.font = '600 24px ' + SANS;
+  ctx.fillText('Nothing leaves your browser', 76, 520);
+
+  ctx.fillStyle = MUTED;
+  ctx.font = '400 22px ' + MONO;
+  ctx.fillText('ihatejson.com', 76, 558);
+}
+
+var made = [];
+
+CARDS.forEach(function (card) {
+  var figure = document.createElement('figure');
+  figure.className = 'card';
+  figure.style.margin = '0 0 28px';
+
+  var caption = document.createElement('figcaption');
+  caption.textContent = 'public/og/' + card.file + '.png';
+
+  var canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+
+  figure.appendChild(caption);
+  figure.appendChild(canvas);
+  document.getElementById('cards').appendChild(figure);
+
+  draw(canvas, card);
+  made.push({ file: card.file, canvas: canvas });
+});
+
+document.getElementById('download-all').addEventListener('click', function () {
+  made.forEach(function (item, i) {
+    setTimeout(function () {
+      var link = document.createElement('a');
+      link.download = item.file + '.png';
+      link.href = item.canvas.toDataURL('image/png');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }, i * 350);
+  });
+});
+
+// Lets a script drive this page headlessly instead of clicking.
+window.__ogCards = made;
+</script>
+
+</body>
+</html>
