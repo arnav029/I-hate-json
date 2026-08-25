@@ -36,17 +36,13 @@
 
   var CORES = ['formatter.js', 'csv.js', 'diff.js'];
 
-  // The worker cannot read the document, so it is handed its cores' versions on
-  // its own query string and rebuilds the importScripts URLs from them.
-  function workerUrl() {
-    var params = [];
-    if (ASSETS['format-worker.js']) params.push('v=' + ASSETS['format-worker.js']);
-
-    var cores = CORES.filter(function (name) { return ASSETS[name]; })
-      .map(function (name) { return name + ':' + ASSETS[name]; }).join(',');
-    if (cores) params.push('c=' + encodeURIComponent(cores));
-
-    return 'format-worker.js' + (params.length ? '?' + params.join('&') : '');
+  // The worker cannot read the document, so core versions ride along on each job
+  // message. Keeping them off the worker's own URL leaves it with a single
+  // cacheable address the service worker can precache.
+  function coreVersions() {
+    var map = {};
+    CORES.forEach(function (name) { if (ASSETS[name]) map[name] = ASSETS[name]; });
+    return map;
   }
 
   var el = {
@@ -654,7 +650,7 @@
   function getWorker() {
     if (worker || workerBroken) return worker;
     try {
-      worker = new Worker(workerUrl());
+      worker = new Worker(assetUrl('format-worker.js'));
       worker.onmessage = onWorkerMessage;
       worker.onerror = function () {
         workerBroken = true;
@@ -727,7 +723,7 @@
     var w = getWorker();
     if (!w) { runOnMainThread(sources); return; }
 
-    w.postMessage({ id: state.requestId, mode: current().mode, sources: sources });
+    w.postMessage({ id: state.requestId, mode: current().mode, cores: coreVersions(), sources: sources });
   }
 
   // Fallback for browsers where Workers are blocked. Same cores, so behaviour
@@ -1053,4 +1049,14 @@
   restoreInput();
   clearOutput();
   getWorker();
+
+  /* ── offline ─────────────────────────────────────────── */
+
+  // Registered after load so it never competes with the first paint. A failure
+  // here is silent on purpose: the site works exactly as before without it.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js').catch(function () {});
+    });
+  }
 })();

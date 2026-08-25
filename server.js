@@ -40,6 +40,41 @@ const TYPES = {
 const COMPRESSIBLE = /^(text\/|application\/(json|xml|manifest\+json)|image\/svg)/;
 
 /*
+ * Brotli beats gzip by 13-19% across this bundle, and every payload here is
+ * identical between requests — so each one is compressed once at the highest
+ * quality and kept. Keyed by content, so a changed file simply gets a new key.
+ */
+const compressions = new Map();
+
+function encodingFor(req) {
+  const accept = req.headers['accept-encoding'] || '';
+  if (/\bbr\b/.test(accept)) return 'br';
+  if (/\bgzip\b/.test(accept)) return 'gzip';
+  return null;
+}
+
+function compress(buffer, encoding, key) {
+  const cacheKey = encoding + ':' + key;
+  const hit = compressions.get(cacheKey);
+  if (hit) return hit;
+
+  const out = encoding === 'br'
+    ? zlib.brotliCompressSync(buffer, {
+      params: {
+        [zlib.constants.BROTLI_PARAM_QUALITY]: zlib.constants.BROTLI_MAX_QUALITY,
+        [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buffer.length
+      }
+    })
+    : zlib.gzipSync(buffer, { level: 9 });
+
+  // Old deploys leave dead keys behind; there are only ever a few dozen live
+  // ones, so dropping the lot is cheaper than tracking them.
+  if (compressions.size > 64) compressions.clear();
+  compressions.set(cacheKey, out);
+  return out;
+}
+
+/*
  * The privacy claim is the product, so the browser is asked to enforce it rather
  * than being trusted to take our word for it: connect-src 'none' means no script
  * on this origin can open a fetch, XHR, WebSocket or beacon to anywhere at all.
@@ -62,6 +97,14 @@ const CSP = [
   "frame-ancestors 'none'"
 ].join('; ');
 
+/*
+ * The service worker runs in its own context with its own policy, and it has to
+ * be able to fetch what it caches — connect-src 'none' would stop it dead. It
+ * is allowed same-origin requests and nothing else, so the page's guarantee is
+ * unchanged for every other script on the site.
+ */
+const WORKER_CSP = CSP.replace("connect-src 'none'", "connect-src 'self'");
+
 const SECURITY_HEADERS = {
   'Content-Security-Policy': CSP,
   'X-Content-Type-Options': 'nosniff',
@@ -76,8 +119,9 @@ function secure(req) {
   return req.headers['x-forwarded-proto'] === 'https' || !!(req.socket && req.socket.encrypted);
 }
 
-function baseHeaders(req) {
+function baseHeaders(req, forWorker) {
   const headers = Object.assign({}, SECURITY_HEADERS);
+  if (forWorker) headers['Content-Security-Policy'] = WORKER_CSP;
   if (secure(req)) headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
   return headers;
 }
@@ -126,6 +170,37 @@ function assetManifest() {
     .map(function (name) { return name + ':' + assetVersion(name); })
     .filter(function (pair) { return !/:$/.test(pair); })
     .join(',');
+}
+
+/*
+ * What the service worker precaches: every route, and every asset the app pulls
+ * in. That is 25KB gzipped in total, so warming the lot beats being clever about
+ * which tool the visitor happens to be looking at.
+ *
+ * The version comes from the asset hashes, so a deploy names a new cache and the
+ * previous one is dropped whole rather than patched.
+ */
+function precacheManifest() {
+  // The rollback lever: set SW_DISABLED=1 and redeploy, and every installed
+  // worker unregisters itself and drops its caches on the next load. sw.js is
+  // served no-cache precisely so this can reach people.
+  if (process.env.SW_DISABLED) return { version: 'off', precache: [], disabled: true };
+
+  const assets = ['styles.css', 'app.js'].concat(WORKER_ASSETS);
+  const digests = assets.map(assetVersion);
+
+  return {
+    version: crypto.createHash('sha1').update(digests.join('')).digest('hex').slice(0, 12),
+    precache: routes.map((route) => route.path)
+      .concat(assets.map((name, i) => '/' + name + (digests[i] ? '?v=' + digests[i] : ''))),
+    disabled: false
+  };
+}
+
+function serviceWorker() {
+  const source = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+  return source.replace(/^var MANIFEST = .*$/m,
+    'var MANIFEST = ' + JSON.stringify(precacheManifest()) + ';');
 }
 
 /* ── rendering ───────────────────────────────────────────── */
@@ -277,11 +352,11 @@ function sendText(req, res, body, type, extra, status) {
     return res.end();
   }
 
-  const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
-  const payload = gzip ? zlib.gzipSync(buffer) : buffer;
+  const encoding = encodingFor(req);
+  const payload = encoding ? compress(buffer, encoding, etag) : buffer;
 
-  if (gzip) {
-    headers['Content-Encoding'] = 'gzip';
+  if (encoding) {
+    headers['Content-Encoding'] = encoding;
     headers.Vary = 'Accept-Encoding';
   }
   headers['Content-Length'] = payload.length;
@@ -348,6 +423,13 @@ const server = http.createServer((req, res) => {
   if (redirects[pathname]) return redirect(req, res, redirects[pathname]);
 
   if (byPath[pathname]) return sendText(req, res, render(byPath[pathname]), TYPES['.html']);
+  // Rendered rather than static so the precache list always matches what this
+  // deploy has on disk. Never cached: revalidating it on every load is what lets
+  // the kill switch in sw.js reach anyone who already has it installed.
+  if (pathname === '/sw.js') {
+    return sendText(req, res, serviceWorker(), TYPES['.js'],
+      { 'Content-Security-Policy': WORKER_CSP, 'Cache-Control': 'no-cache' });
+  }
   if (pathname === '/robots.txt') return sendText(req, res, robots(), TYPES['.txt']);
   if (pathname === '/sitemap.xml') return sendText(req, res, sitemap(), TYPES['.xml']);
 
@@ -368,13 +450,27 @@ const server = http.createServer((req, res) => {
       return res.end();
     }
 
-    const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '') && COMPRESSIBLE.test(type);
-    if (gzip) {
-      headers['Content-Encoding'] = 'gzip';
+    const encoding = COMPRESSIBLE.test(type) ? encodingFor(req) : null;
+
+    // Compressible files are small and identical between requests, so they are
+    // read and compressed once. Images stream straight through — they are the
+    // only large things here and they do not compress.
+    if (encoding) {
+      let payload;
+      try {
+        payload = compress(fs.readFileSync(filePath), encoding, etag);
+      } catch (readErr) {
+        return send(req, res, 500, 'Internal Server Error', { 'Content-Type': 'text/plain' });
+      }
+
+      headers['Content-Encoding'] = encoding;
       headers.Vary = 'Accept-Encoding';
-    } else {
-      headers['Content-Length'] = stat.size;
+      headers['Content-Length'] = payload.length;
+      res.writeHead(200, headers);
+      return res.end(req.method === 'HEAD' ? undefined : payload);
     }
+
+    headers['Content-Length'] = stat.size;
 
     if (req.method === 'HEAD') {
       res.writeHead(200, headers);
@@ -388,8 +484,7 @@ const server = http.createServer((req, res) => {
     });
 
     res.writeHead(200, headers);
-    if (gzip) stream.pipe(zlib.createGzip()).pipe(res);
-    else stream.pipe(res);
+    stream.pipe(res);
   });
 });
 
@@ -404,4 +499,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { server, render, robots, sitemap };
+module.exports = { server, render, robots, sitemap, serviceWorker, headers: baseHeaders };

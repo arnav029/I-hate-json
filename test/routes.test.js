@@ -13,6 +13,7 @@ const path = require('path');
 process.env.SITE_ORIGIN = 'https://www.ihatejson.com';
 const { server } = require('../server');
 const { routes } = require('../routes');
+const { pageFor } = require('../build');
 
 let passed = 0;
 const tests = [];
@@ -230,9 +231,141 @@ test('sitemap dates come from the content, not the clock', async (port) => {
   assert.strictEqual(dates.length, routes.length);
   assert.deepStrictEqual(dates, routes.map((r) => r.updated));
 
-  const today = new Date().toISOString().slice(0, 10);
   assert.ok(dates.every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)), 'dates are well formed');
-  assert.ok(dates.some((d) => d !== today), 'lastmod is not just stamped with today');
+
+  // Comparing against today only catches new Date() on days nobody edited, so
+  // move a route's date and check the sitemap actually follows it.
+  const route = routes[0];
+  const original = route.updated;
+  route.updated = '2019-03-04';
+  try {
+    const moved = await get(port, '/sitemap.xml');
+    assert.ok(moved.body.includes('<lastmod>2019-03-04</lastmod>'),
+      'lastmod comes from the route table, not the clock');
+  } finally {
+    route.updated = original;
+  }
+});
+
+test('the service worker precaches every route and asset', async (port) => {
+  const res = await get(port, '/sw.js');
+
+  assert.strictEqual(res.status, 200);
+  assert.ok(/javascript/.test(res.headers['content-type']));
+  // Revalidated every load, which is the only reason the kill switch can reach
+  // anyone who already has it installed.
+  assert.strictEqual(res.headers['cache-control'], 'no-cache');
+
+  // Its own context, its own policy: connect-src 'none' would stop it filling
+  // its cache, so it gets 'self' while every other script keeps 'none'.
+  const csp = res.headers['content-security-policy'];
+  assert.ok(/connect-src 'self'/.test(csp), 'the worker may fetch same-origin');
+  assert.ok(!/connect-src 'none'/.test(csp));
+  assert.ok(/default-src 'self'/.test(csp), 'and nothing cross-origin');
+
+  const manifest = JSON.parse(/^var MANIFEST = (.*);$/m.exec(res.body)[1]);
+  assert.strictEqual(manifest.disabled, false);
+  assert.ok(/^[a-f0-9]{12}$/.test(manifest.version), 'version is derived from the hashes');
+
+  for (const route of routes) {
+    assert.ok(manifest.precache.includes(route.path), 'precaches ' + route.path);
+  }
+  for (const name of ['styles.css', 'app.js', 'format-worker.js', 'formatter.js', 'csv.js', 'diff.js']) {
+    assert.ok(manifest.precache.some((url) => url.startsWith('/' + name + '?v=')),
+      'precaches a versioned ' + name);
+  }
+
+  // Every precached URL has to actually resolve, or install() fails wholesale.
+  for (const url of manifest.precache) {
+    assert.strictEqual((await get(port, url)).status, 200, 'precache entry 404s: ' + url);
+  }
+});
+
+test('the service worker can be switched off from the environment', async (port) => {
+  process.env.SW_DISABLED = '1';
+  try {
+    const res = await get(port, '/sw.js');
+    const manifest = JSON.parse(/^var MANIFEST = (.*);$/m.exec(res.body)[1]);
+    assert.strictEqual(manifest.disabled, true);
+    assert.deepStrictEqual(manifest.precache, []);
+    // It has to take over before it can retire itself, or it sits waiting forever.
+    assert.ok(/MANIFEST\.disabled[\s\S]{0,160}skipWaiting/.test(res.body),
+      'a disabled worker skips waiting so activate runs');
+    assert.ok(/unregister\(\)/.test(res.body), 'and unregisters');
+  } finally {
+    delete process.env.SW_DISABLED;
+  }
+});
+
+test('the app is installable', async (port) => {
+  const res = await get(port, '/manifest.webmanifest');
+  assert.strictEqual(res.status, 200);
+  assert.ok(/manifest\+json/.test(res.headers['content-type']));
+
+  const manifest = JSON.parse(res.body);
+  assert.strictEqual(manifest.start_url, '/');
+  assert.ok(manifest.name && manifest.icons.length >= 2);
+  assert.ok(manifest.icons.some((i) => i.purpose === 'maskable'), 'has a maskable icon');
+
+  for (const icon of manifest.icons) {
+    const file = await get(port, icon.src);
+    assert.strictEqual(file.status, 200, 'missing icon: ' + icon.src);
+  }
+
+  const home = await get(port, '/');
+  assert.ok(/<link rel="manifest" href="\/manifest.webmanifest">/.test(home.body));
+  assert.ok(/name="theme-color"[^>]*prefers-color-scheme: dark/.test(home.body),
+    'theme-color follows the scheme');
+  assert.strictEqual((await get(port, '/icons/apple-touch-icon.png')).status, 200);
+});
+
+test('text is served brotli when the browser takes it', async (port) => {
+  const br = await get(port, '/app.js', { 'accept-encoding': 'br, gzip' });
+  assert.strictEqual(br.headers['content-encoding'], 'br');
+  assert.strictEqual(br.headers.vary, 'Accept-Encoding');
+
+  const gzip = await get(port, '/app.js', { 'accept-encoding': 'gzip' });
+  assert.strictEqual(gzip.headers['content-encoding'], 'gzip');
+  assert.ok(Number(br.headers['content-length']) < Number(gzip.headers['content-length']),
+    'brotli is the smaller of the two');
+
+  const plain = await get(port, '/app.js', { 'accept-encoding': 'identity' });
+  assert.ok(!plain.headers['content-encoding'], 'and nothing is forced on a client that declined');
+
+  // Images are already compressed; running them through brotli is wasted work.
+  const png = await get(port, '/og/formatter.png', { 'accept-encoding': 'br, gzip' });
+  assert.ok(!png.headers['content-encoding'], 'images stream uncompressed');
+});
+
+test('the static build covers everything the server serves', async (port) => {
+  const { build } = require('../build');
+  const dist = path.join(__dirname, '..', 'dist');
+  build();
+
+  for (const route of routes) {
+    const file = path.join(dist, pageFor(route.path));
+    assert.ok(fs.existsSync(file), 'built ' + route.path);
+    assert.strictEqual(fs.readFileSync(file, 'utf8'), (await get(port, route.path)).body,
+      route.path + ' differs between the server and the build');
+  }
+
+  for (const name of ['404.html', 'robots.txt', 'sitemap.xml', 'sw.js', '_headers',
+    '_redirects', 'app.js', 'styles.css', 'manifest.webmanifest']) {
+    assert.ok(fs.existsSync(path.join(dist, name)), 'built ' + name);
+  }
+
+  const headers = fs.readFileSync(path.join(dist, '_headers'), 'utf8');
+  assert.ok(/connect-src 'none'/.test(headers), 'carries the page CSP');
+  assert.ok(/\/sw\.js\n(  .*\n)*  Content-Security-Policy: [^\n]*connect-src 'self'/.test(headers),
+    'and the looser one for the worker');
+  assert.ok(headers.indexOf('/*.js') < headers.indexOf('/sw.js'),
+    'sw.js comes last so its no-cache wins');
+
+  const redirects = fs.readFileSync(path.join(dist, '_redirects'), 'utf8');
+  assert.ok(/^\/json-formatter \/ 301$/m.test(redirects));
+
+  // The draft in public/ must never be published.
+  assert.ok(!fs.existsSync(path.join(dist, '_draft-brutalist.html')), 'drafts stay out of dist');
 });
 
 test('static assets and unknown paths still behave', async (port) => {

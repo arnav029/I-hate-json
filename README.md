@@ -86,10 +86,14 @@ public/           everything the browser gets
   formatter.js    pure parse/format/highlight core (no DOM — testable in Node)
   csv.js          pure JSON -> CSV core (no DOM)
   diff.js         pure structural diff core (no DOM)
+  sw.js           service worker; its precache list is filled in at serve time
+  manifest.webmanifest
   og/             1200×630 social cards, one per route
+  icons/          app icons the manifest points at
 routes.js         per-route metadata and page copy (server-side only)
 server.js         zero-dependency static server + per-route rendering
-tools/og.html     regenerates public/og/ — open it, click, move the files
+build.js          renders the same output to dist/ for a static host
+tools/images.html regenerates public/og/ and public/icons/ — open it, click
 test/             Node tests for every core, incl. multi-MB fixtures
 ```
 
@@ -98,6 +102,7 @@ test/             Node tests for every core, incl. multi-MB fixtures
 ```sh
 npm start          # http://localhost:3000
 npm test           # every core, ~15s (builds multi-MB fixtures)
+npm run build      # render the whole site to dist/ as plain files
 ```
 
 No build step and no dependencies. `public/` is plain static files, but the per-route
@@ -125,6 +130,38 @@ Also sent: `Strict-Transport-Security` (over TLS only), `Permissions-Policy` den
 camera/mic/geolocation/USB/payment, `Cross-Origin-Opener-Policy`, `X-Content-Type-Options`
 and `Referrer-Policy: no-referrer`.
 
+## It works offline
+
+After the first visit the whole site lives on the device. A service worker precaches
+every route and every asset — ten entries, 25KB gzipped — and **every tool keeps
+working with no connection at all**. Verified by killing the server and running a
+diff: page, styles, worker and `diff.js` all came from cache.
+
+Online, a repeat visit costs exactly one request: the page itself, about 4KB over the
+wire. Pages are network-first so a deploy lands on the next navigation, with the
+cached copy standing in only when there is genuinely nothing. Every asset — the CSS,
+`app.js`, the worker and its cores — is served from cache with no request at all,
+because each URL carries a content hash and can only ever mean one thing. A deploy
+changes those hashes, which changes the cache name, and the previous cache is dropped
+whole.
+
+One measurement gotcha: `PerformanceResourceTiming.encodedBodySize` reports the
+*decoded* size for anything a service worker served, so DevTools makes cached
+navigations look uncompressed. They are not — the cached response carries
+`Content-Encoding: br` and a 4218-byte `Content-Length`.
+
+`public/manifest.webmanifest` plus `theme-color` make it installable — a real icon in a
+dock or on a home screen.
+
+**Rollback.** Set `SW_DISABLED=1` and redeploy. Every installed worker then unregisters
+itself and clears its caches on the next load, and everyone is back on plain network
+fetches. `/sw.js` is served `no-cache` for exactly this reason: it is the one file that
+must always be revalidated, or the switch could never reach the people who need it.
+
+The worker gets `connect-src 'self'` rather than `'none'` — it has to be able to fetch
+what it caches. That is the one relaxation in the whole policy, it is same-origin only,
+and every other script on the site still cannot open a connection to anywhere.
+
 ## Caching
 
 Assets are referenced with a content hash — `app.js?v=e16aab0f` — and a URL whose hash
@@ -132,9 +169,14 @@ still matches the file is served `max-age=31536000, immutable`. A stale or missi
 revalidates instead. Hashes are recomputed when a file's mtime moves, so edit-and-reload
 works with no build step.
 
-The hashes for the worker and its three cores travel on `<body data-assets>`; `app.js`
-builds the worker URL from them and passes the core versions on the worker's own query
-string, which is how `importScripts` gets versioned without an inline script.
+The hashes for the worker and its three cores travel on `<body data-assets>`, and the
+core hashes go to the worker on each job message — which keeps the worker itself at one
+cacheable URL the service worker can precache, and lets it import only what a mode needs
+(`csv.js` and `diff.js` are dead weight on the formatter and minifier pages).
+
+Text is served brotli where the browser accepts it — 13–19% smaller than gzip across
+this bundle — and each payload is compressed once and kept, since none of them change
+between requests. Images stream through untouched.
 
 ## SEO
 
@@ -155,6 +197,16 @@ Duplicate URLs (`/json-formatter`, `/index.html`, trailing slashes) 301 to the c
 path. `SITE_ORIGIN` sets the origin used in canonical tags and the sitemap
 (default `https://www.ihatejson.com`). Set `CANONICAL_HOST` to also 301 every other host
 to one — off by default so localhost and preview deploys work.
+
+## Deploy as static files
+
+`npm run build` renders every route, the 404, `robots.txt`, `sitemap.xml` and the
+service worker into `dist/`, alongside `_headers` and `_redirects` so Cloudflare Pages
+and Netlify apply the same CSP, caching and 301s the server does. A test asserts the
+built pages are byte-identical to what `server.js` serves.
+
+This is the route to a global edge instead of one region — worth doing, since a
+single-origin TTFB is 250–350ms from the US or Europe. `npm start` is unaffected.
 
 ## Deploy on Railway
 

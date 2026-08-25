@@ -5,30 +5,33 @@
  *
  * A module receives its inputs as an array of texts, so multi-input modules
  * (diff) need nothing special from the caller beyond a second source.
+ *
+ * Cores are imported on demand rather than up front: csv.js and diff.js are
+ * dead weight on the formatter and minifier pages. Their content hashes arrive
+ * on the job message, so this worker keeps one cacheable URL of its own.
  */
 'use strict';
 
-/*
- * app.js passes each core's content hash on this worker's query string, so the
- * cores can be cached for a year alongside everything else. Without it (a worker
- * started some other way) the plain names still resolve.
- */
-var CORE_VERSIONS = (function () {
-  var map = {};
-  var match = /[?&]c=([^&]*)/.exec(self.location.search || '');
-  if (!match) return map;
-  decodeURIComponent(match[1]).split(',').forEach(function (pair) {
-    var at = pair.lastIndexOf(':');
-    if (at > 0) map[pair.slice(0, at)] = pair.slice(at + 1);
-  });
-  return map;
-})();
+// Every mode parses, and parsing lives in the formatter core.
+var NEEDS = {
+  format: ['formatter.js'],
+  minify: ['formatter.js'],
+  csv: ['formatter.js', 'csv.js'],
+  diff: ['formatter.js', 'diff.js']
+};
 
-function core(name) {
-  return CORE_VERSIONS[name] ? name + '?v=' + CORE_VERSIONS[name] : name;
+var loaded = {};
+
+function loadCores(mode, versions) {
+  var pending = (NEEDS[mode] || NEEDS.format).filter(function (name) { return !loaded[name]; });
+  if (!pending.length) return;
+
+  importScripts.apply(null, pending.map(function (name) {
+    return versions && versions[name] ? name + '?v=' + versions[name] : name;
+  }));
+
+  pending.forEach(function (name) { loaded[name] = true; });
 }
-
-importScripts(core('formatter.js'), core('csv.js'), core('diff.js'));
 
 var MODES = {
   format: function (texts, onStage) {
@@ -62,6 +65,17 @@ self.onmessage = function (event) {
   var stage = function (name) {
     reply({ type: 'stage', id: id, stage: name });
   };
+
+  try {
+    loadCores(mode, data.cores);
+  } catch (err) {
+    return reply({
+      type: 'error',
+      id: id,
+      mode: mode,
+      error: { kind: 'unknown', message: 'Could not load the tools. Try reloading the page.' }
+    });
+  }
 
   if (sources.some(function (source) { return source.source === 'file'; })) stage('reading');
 
