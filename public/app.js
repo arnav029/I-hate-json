@@ -8,6 +8,18 @@
 (function () {
   'use strict';
 
+  // The article pages carry no tool, so none of the wiring below applies to
+  // them. They still register the service worker, so they are cached and
+  // readable offline like every other page.
+  if (document.body.getAttribute('data-layout') === 'article') {
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js').catch(function () {});
+      });
+    }
+    return;
+  }
+
   var MAX_BYTES = 50 * 1024 * 1024;   // hard cap, matches the "up to 50MB" promise
   var INLINE_FILE_LIMIT = 1024 * 1024; // below this a dropped file is editable in the textarea
   var PREVIEW_COLUMNS = 40;            // columns rendered in the CSV preview table

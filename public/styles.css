@@ -987,3 +987,52 @@ textarea#input.marked::selection {
 }
 
 #input-panel:focus { outline: none; }
+
+/* ── article pages ───────────────────────────────────── */
+
+/* /json-privacy is prose, not a tool: the workspace has nothing to show. */
+body[data-layout="article"] .workspace { display: none; }
+
+/* Under a tool, centred prose reads as a footnote to the panels above it. With
+   the tool gone it is the page, so it lines up with the header instead. */
+body[data-layout="article"] .prose {
+  max-width: 68ch;
+  margin: 0;
+  padding: 8px 24px 8px;
+  font-size: 16px;
+}
+
+body[data-layout="article"] .prose > h2:first-of-type {
+  margin-top: 30px;
+}
+
+.prose .lede {
+  font-size: 1.15em;
+  line-height: 1.55;
+  color: var(--text);
+  margin-top: 0;
+}
+
+.prose .sources {
+  padding-left: 1.1em;
+  margin: 0;
+}
+
+.prose .sources li {
+  margin-bottom: 6px;
+}
+
+/* The badge is a link now — it goes to the page explaining the claim. */
+a.privacy-badge {
+  text-decoration: none;
+  transition: border-color .15s ease, color .15s ease;
+}
+
+a.privacy-badge:hover {
+  border-color: currentColor;
+}
+
+a.privacy-badge:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

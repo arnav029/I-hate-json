@@ -77,7 +77,7 @@ test('each page carries social tags and valid structured data', async (port) => 
     const json = pick(res.body, /<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
     const data = JSON.parse(json);
     assert.strictEqual(data.length, 2);
-    assert.strictEqual(data[0]['@type'], 'SoftwareApplication');
+    assert.strictEqual(data[0]['@type'], route.article ? 'TechArticle' : 'SoftwareApplication');
     assert.strictEqual(data[1]['@type'], 'FAQPage');
     assert.ok(data[1].mainEntity.length >= 4, route.path + ' has at least four FAQ entries');
     assert.ok(data[1].mainEntity.every((q) => q.name && q.acceptedAnswer.text), 'every FAQ entry is complete');
@@ -101,8 +101,10 @@ test('the tools link to each other', async (port) => {
     for (const other of routes) {
       assert.ok(res.body.includes('href="' + other.path + '"'), route.path + ' links to ' + other.path);
     }
-    assert.ok(/rail-item is-active/.test(res.body), route.path + ' marks its own rail item active');
-    assert.strictEqual((res.body.match(/aria-current="page"/g) || []).length, 1, 'exactly one active item');
+    if (!route.article) {
+      assert.ok(/rail-item is-active/.test(res.body), route.path + ' marks its own rail item active');
+      assert.strictEqual((res.body.match(/aria-current="page"/g) || []).length, 1, 'exactly one active item');
+    }
   }
 });
 
@@ -295,6 +297,30 @@ test('the service worker can be switched off from the environment', async (port)
   } finally {
     delete process.env.SW_DISABLED;
   }
+});
+
+test('the article stands alone from the tools', async (port) => {
+  const article = routes.find((route) => route.article);
+  assert.ok(article, 'there is an article route');
+
+  const res = await get(port, article.path);
+  assert.ok(/data-layout="article"/.test(res.body), 'renders in the article layout');
+
+  // Every factual claim on that page is attributed, so the sources have to be there.
+  for (const host of ['labs.watchtowr.com', 'thehackernews.com', 'csoonline.com', 'securityaffairs.com']) {
+    assert.ok(res.body.includes(host), 'cites ' + host);
+  }
+
+  // It is the destination for the header badge on every tool page.
+  for (const tool of routes.filter((route) => !route.article)) {
+    const page = await get(port, tool.path);
+    assert.ok(/class="privacy-badge" href="\/json-privacy"/.test(page.body),
+      tool.path + ' links its privacy badge to the article');
+  }
+
+  const words = res.body.replace(/<script[\s\S]*?<\/script>/g, '').replace(/<[^>]+>/g, ' ')
+    .split(/\s+/).filter(Boolean).length;
+  assert.ok(words > 800, 'the article is substantial, got ' + words);
 });
 
 test('the app is installable', async (port) => {

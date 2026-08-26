@@ -17,6 +17,7 @@ through `sessionStorage` (capped at 100KB; files are never persisted).
 | `/json-to-csv` | CSV |
 | `/json-minifier` | Minify |
 | `/json-diff` | Diff |
+| `/json-privacy` | Article — not a tool |
 
 | Module | Does |
 | --- | --- |
@@ -129,6 +130,26 @@ while `fetch()` to any host, same-origin included, is blocked.
 Also sent: `Strict-Transport-Security` (over TLS only), `Permissions-Policy` denying
 camera/mic/geolocation/USB/payment, `Cross-Origin-Opener-Policy`, `X-Content-Type-Options`
 and `Referrer-Policy: no-referrer`.
+
+## The article
+
+`/json-privacy` is the one page here that argues rather than converts, and the only
+one likely to earn an inbound link. It covers the November 2025 watchTowr Labs research
+that recovered more than 80,000 files — passwords, cloud keys, AD credentials — from
+JSONFormatter and CodeBeautify, neither of which was breached: both had a save button
+that turned a paste into a public, enumerable link.
+
+Every factual claim on it is sourced and linked, and a test asserts those citations are
+still present. The argument it makes is architectural rather than competitive — a tool
+that *can* save your data has a copy of your data — and it ends with three checks a
+reader can run on any tool, including this one. The third is only honest because of the
+service worker: turn off the network and the site keeps working, which no server-backed
+tool can do.
+
+Article routes carry `article: true`. That hides the workspace (`data-layout="article"`),
+makes `app.js` stand down after registering the service worker, and emits `TechArticle`
+structured data instead of `SoftwareApplication`. The header's "100% client-side" badge
+links here from every page.
 
 ## It works offline
 

@@ -230,7 +230,17 @@ function stripTags(html) {
 }
 
 function structuredData(route, url) {
-  const application = {
+  const application = route.article ? {
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    headline: route.heading,
+    url: url,
+    description: route.description,
+    datePublished: route.updated,
+    dateModified: route.updated,
+    author: { '@type': 'Organization', name: 'I Hate JSON' },
+    isAccessibleForFree: true
+  } : {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
     name: route.title.split('—')[0].trim(),
@@ -294,10 +304,17 @@ function head(route, url) {
   ]).join('\n');
 }
 
-function nav() {
-  return '<nav class="prose-nav" aria-label="Other tools">' + routes.map(function (route) {
-    return '<a href="' + route.path + '">' + route.title.split('—')[0].trim() + '</a>';
-  }).join('') + '</nav>';
+// Everything else on the site, minus the page you are already reading. The
+// article is in here too, so it is reachable from the foot of every tool.
+function nav(current) {
+  return '<nav class="prose-nav" aria-label="Other pages">' + routes
+    .filter(function (route) { return route.path !== current.path; })
+    .map(function (route) {
+      // Tool titles carry their own short name before the dash; the article
+      // needs one given to it, or the nav gets a full sentence in it.
+      return '<a href="' + route.path + '">' +
+        (route.label || route.title.split('—')[0].trim()) + '</a>';
+    }).join('') + '</nav>';
 }
 
 function render(route) {
@@ -309,13 +326,15 @@ function render(route) {
     .replace('<!--HEAD-->', head(route, url))
     .replace('href="styles.css"', 'href="' + versioned('styles.css') + '"')
     .replace('src="app.js"', 'src="' + versioned('app.js') + '"')
-    .replace('<body>', '<body data-module="' + route.module + '" data-assets="' + assetManifest() + '">')
+    .replace('<body>', '<body data-module="' + route.module + '"' +
+      (route.article ? ' data-layout="article"' : '') +
+      ' data-assets="' + assetManifest() + '">')
     .replace(/(<h1 id="page-title">)[\s\S]*?(<\/h1>)/, '$1' + route.heading + '$2')
     .replace('<a class="rail-item" href="' + route.path + '"',
       '<a class="rail-item is-active" aria-current="page" href="' + route.path + '"')
     .replace('<!--CONTENT-->',
       '<section class="prose">' + route.content +
-      (route.faq ? faqHtml(route.faq) : '') + nav() + '</section>');
+      (route.faq ? faqHtml(route.faq) : '') + nav(route) + '</section>');
 }
 
 function robots() {

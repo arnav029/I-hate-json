@@ -7,7 +7,8 @@
 
 var PRIVACY = 'Everything runs in your browser. Your JSON is parsed by a Web Worker on your own ' +
   'machine and never sent anywhere — there is no upload, no account, and no server-side ' +
-  'processing. You can check: open the network tab and format a file, and you will see no requests.';
+  'processing. You can check: open the network tab and format a file, and you will see no requests. ' +
+  '<a href="/json-privacy">Here is why that matters</a>, and how to verify it on any tool.';
 
 var routes = [
   {
@@ -150,6 +151,111 @@ var routes = [
       { q: 'Can I compare two files rather than pasting?', a: 'Yes. Each side has its own upload button, and dropping a file onto a pane loads it into that pane. Files above 1MB are read inside the worker.' },
       { q: 'What if one side is invalid JSON?', a: 'The error says which side failed, gives the line and column, and selects the offending token in that pane.' },
       { q: 'Is there a limit on the number of differences?', a: 'It stops at 20,000 differences and says so, which keeps a comparison between two unrelated documents from exhausting memory.' }
+    ]
+  },
+
+  /*
+   * Not a tool — the one page here that argues rather than converts. It exists
+   * because "nothing leaves your browser" is a line every JSON site uses, and in
+   * November 2025 two of the biggest were shown to be publishing what people
+   * pasted into them. Every claim below is sourced and linked.
+   */
+  {
+    path: '/json-privacy',
+    module: 'privacy',
+    article: true,
+    updated: '2026-08-25',
+    title: 'Is it safe to paste JSON into an online formatter?',
+    label: 'Is it safe to paste JSON online?',
+    description: 'Researchers recovered 80,000 files of pasted data — passwords, cloud keys, AD ' +
+      'credentials — from two popular JSON sites. What happened, and three ways to check any tool ' +
+      'yourself.',
+    heading: 'Is it safe to paste JSON into an online tool?',
+    keywords: 'is jsonformatter safe, json formatter privacy, safe json formatter, paste json online',
+    content: [
+      '<p class="lede">Usually yes, and occasionally very much not. What separates the two is not how ',
+      'trustworthy the site looks — it is whether the tool has anywhere to put your data in the first ',
+      'place. Here is the case that made that concrete, and three ways to check any tool in under a ',
+      'minute.</p>',
+
+      '<h2>What happened in November 2025</h2>',
+      '<p>Researchers at <a href="https://labs.watchtowr.com/" rel="noopener">watchTowr Labs</a> published ',
+      'an analysis of two of the most-used JSON tools on the web, <strong>JSONFormatter</strong> and ',
+      '<strong>CodeBeautify</strong>. They recovered <strong>more than 80,000 files</strong> — around 5GB — ',
+      'of what people had pasted into them: five years’ worth from one site, a year from the other.</p>',
+      '<p>The contents read like an incident report. Passwords. Active Directory credentials. Database and ',
+      'FTP logins. Cloud environment keys. LDAP configuration. Repository keys. Helpdesk API keys. Recorded ',
+      'SSH sessions. The organisations it came from spanned critical national infrastructure, government, ',
+      'banking, insurance, healthcare, aerospace, telecommunications, education and — with a certain irony — ',
+      'cybersecurity.</p>',
+      '<p>Nobody broke in. There was no exploit and no breach. Both sites offered a <strong>save ',
+      'button</strong> that turned a paste into a shareable link, and both listed those links on a public ',
+      '“Recent Links” page. The identifiers were predictable. Anyone willing to write a loop could walk ',
+      'the entire history.</p>',
+      '<p>And people were. The researchers planted fake AWS keys to see what would happen; attackers were ',
+      'trying them <strong>within 48 hours</strong>. This was not a dormant exposure waiting to be found — ',
+      'it was already being harvested.</p>',
+      '<p>To their credit, both sites appear to have disabled the save feature around September 2025, after ',
+      'affected organisations were notified. That specific hole is closed.</p>',
+
+      '<h2>The feature was the vulnerability</h2>',
+      '<p>That is the part worth carrying away, because this is not really a story about two websites being ',
+      'careless. It is a story about what a convenience feature costs.</p>',
+      '<p>Saving a paste so you can send it to a colleague is a genuinely useful thing to offer. But the ',
+      'moment a tool can save your data, it has a copy of your data — and every copy is something that can ',
+      'be enumerated, indexed, leaked, subpoenaed, or sold along with the company. A privacy policy is a ',
+      'statement of intent about that copy. It is not a constraint on what can happen to it.</p>',
+      '<p>The only architecture that cannot leak what you paste is the one where what you paste never ',
+      'arrives.</p>',
+
+      '<h2>How this site is built</h2>',
+      '<p>Every tool here — formatting, minifying, CSV conversion, diffing — runs inside a Web Worker on ',
+      'your own machine. There is no account, no upload, no logging, no analytics and no third-party script ',
+      'of any kind. The server in front of you hands over static files and does nothing else; it has no ',
+      'database to put anything in.</p>',
+      '<p>There is <strong>no save button, and there will not be one</strong>. If link sharing ever ships ',
+      'here, it will put the data in the URL fragment — the part after the <code>#</code>, which browsers ',
+      'never send to a server — and the button will say so plainly.</p>',
+
+      '<h2>Three ways to check, here or anywhere else</h2>',
+      '<p><strong>1. Watch the network.</strong> Open your browser’s developer tools, switch to the Network ',
+      'tab, and format something large. A client-side tool makes no request at all while it works. If you ',
+      'can see your document leaving in a request body, you have your answer.</p>',
+      '<p><strong>2. Read the security header.</strong> In the same panel, click the page itself and look at ',
+      'its response headers. This site sends a Content Security Policy containing ',
+      '<code>connect-src \'none\'</code>, which tells your browser to block every outbound connection any ',
+      'script on this page might attempt — fetch, XHR, WebSocket, beacon, all of it. That is not a promise ',
+      'from us. It is a rule your browser enforces on us, and it would hold even if this server were ',
+      'compromised tomorrow.</p>',
+      '<p><strong>3. Unplug.</strong> The most convincing test needs no tooling at all. Load this page, turn ',
+      'off your Wi-Fi, and carry on working. Every tool here keeps running with no network, because none of ',
+      'them ever needed one. A tool that stops working offline was doing the work somewhere else.</p>',
+
+      '<h2>If you have already pasted something sensitive</h2>',
+      '<p>Assume it is public and act accordingly: rotate the credential, revoke the key, and check your ',
+      'logs for use you did not authorise. This is unglamorous, and it is the only thing that actually ',
+      'helps — deleting a paste tells you nothing about who copied it first. It is also worth looking at ',
+      'the habit rather than the incident, because whoever did it once at six on a Friday will do it ',
+      'again.</p>',
+
+      '<h2>Sources</h2>',
+      '<ul class="sources">',
+      '<li><a href="https://labs.watchtowr.com/" rel="noopener">watchTowr Labs</a> — the original research, ',
+      'by Jake Knott</li>',
+      '<li><a href="https://thehackernews.com/2025/11/years-of-jsonformatter-and-codebeautify.html" ',
+      'rel="noopener">The Hacker News</a> — “Years of JSONFormatter and CodeBeautify Leaks Expose Thousands ',
+      'of Passwords and API Keys”</li>',
+      '<li><a href="https://www.csoonline.com/article/4096193/developers-left-large-cache-of-credentials-exposed-on-code-generation-websites-2.html" ',
+      'rel="noopener">CSO Online</a> — on the range of sectors affected</li>',
+      '<li><a href="https://securityaffairs.com/185150/security/thousands-of-sensitive-secrets-published-on-jsonformatter-and-codebeautify.html" ',
+      'rel="noopener">Security Affairs</a></li>',
+      '</ul>'
+    ].join(''),
+    faq: [
+      { q: 'Was this a hack?', a: 'No. Nothing was broken into. Both sites offered a save button that turned a paste into a shareable link and listed those links publicly with predictable identifiers — the data was published by the feature working exactly as designed.' },
+      { q: 'Are those sites safe to use now?', a: 'Both appear to have disabled the save feature around September 2025, which closes this particular exposure. Whether to paste sensitive data into any tool with a server behind it is a separate judgement, since a feature that was removed can be added back.' },
+      { q: 'How can I tell whether a tool sends my data anywhere?', a: 'Open the Network tab in your developer tools and use the tool on something large. A client-side tool makes no request while it works. As a second check, look for a Content Security Policy on the page with <code>connect-src</code> set to <code>none</code>, which makes your browser enforce it rather than the site merely promising it.' },
+      { q: 'I pasted an API key into one of these. What now?', a: 'Treat it as public. Rotate or revoke it, then check your logs for unauthorised use. Deleting the paste does not help, because you cannot know who copied it first — researchers found planted keys being tried by attackers within 48 hours.' }
     ]
   }
 ];
