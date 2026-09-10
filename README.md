@@ -216,3 +216,9 @@ single-origin TTFB is 250–350ms from the US or Europe. `npm start` is unaffect
 4. Generate a domain under **Settings → Networking**.
 
 No environment variables, no database, no build command required.
+
+
+## How it looks
+
+<img width="1917" height="920" alt="image" src="https://github.com/user-attachments/assets/298b21b6-3b5e-47d3-ab3c-50e21169214e" />
+
