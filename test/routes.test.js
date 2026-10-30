@@ -196,7 +196,7 @@ test('assets are versioned and cached only when the version matches', async (por
   // an inline script, which is what lets the CSP stay nonce-free.
   const manifest = pick(home.body, /data-assets="([^"]+)"/);
   assert.ok(manifest, 'the page carries an asset manifest');
-  for (const name of ['format-worker.js', 'formatter.js', 'csv.js', 'diff.js']) {
+  for (const name of ['format-worker.js', 'formatter.js', 'repair.js', 'csv.js', 'diff.js', 'tree.js', 'share.js']) {
     assert.ok(new RegExp(name + ':[a-f0-9]+').test(manifest), manifest + ' covers ' + name);
   }
 
@@ -272,7 +272,8 @@ test('the service worker precaches every route and asset', async (port) => {
   for (const route of routes) {
     assert.ok(manifest.precache.includes(route.path), 'precaches ' + route.path);
   }
-  for (const name of ['styles.css', 'app.js', 'format-worker.js', 'formatter.js', 'csv.js', 'diff.js']) {
+  for (const name of ['styles.css', 'app.js', 'format-worker.js', 'formatter.js', 'repair.js', 'csv.js', 'diff.js',
+    'tree.js', 'share.js']) {
     assert.ok(manifest.precache.some((url) => url.startsWith('/' + name + '?v=')),
       'precaches a versioned ' + name);
   }

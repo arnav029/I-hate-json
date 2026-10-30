@@ -46,7 +46,8 @@
 
   function convert(text, opts) {
     var onStage = (opts && opts.onStage) || function () {};
-    var parsed = global.JSONFormatterCore.parse(text);
+    var repairs = [];
+    var parsed = global.JSONFormatterCore.parse(text, repairs);
 
     onStage('shaping');
 
@@ -98,6 +99,7 @@
       csv: csv,
       columns: columns,
       preview: preview,
+      repairs: repairs,
       stats: {
         rows: rows.length,
         columns: columns.length,

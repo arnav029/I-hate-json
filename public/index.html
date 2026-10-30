@@ -26,6 +26,16 @@
       <span>Format</span>
     </a>
 
+    <a class="rail-item" href="/json-viewer" data-module="viewer">
+      <svg viewBox="0 0 24 24" aria-hidden="true" width="19" height="19"><path d="M6 3.5V16a2 2 0 0 0 2 2h4M6 9h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><rect x="12" y="6.5" width="8" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="12" y="15.5" width="8" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+      <span>Viewer</span>
+    </a>
+
+    <a class="rail-item" href="/fix-json" data-module="repair">
+      <svg viewBox="0 0 24 24" aria-hidden="true" width="19" height="19"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L4 16.7V20h3.3l5.3-5.3a4 4 0 0 0 5.1-5.4l-2.5 2.5-2.4-.6-.6-2.4 2.5-2.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <span>Fix</span>
+    </a>
+
     <a class="rail-item" href="/json-to-csv" data-module="csv">
       <svg viewBox="0 0 24 24" aria-hidden="true" width="19" height="19"><rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 9.5h17M9.5 9.5v10M15 9.5v10" stroke="currentColor" stroke-width="1.8"/></svg>
       <span>CSV</span>
@@ -84,7 +94,7 @@
 
         <div class="panel-body">
           <textarea id="input" aria-label="JSON input" spellcheck="false" autocomplete="off" autocapitalize="off" autocorrect="off"
-            placeholder='Paste JSON here…&#10;&#10;{ "hello": "world", "items": [1, 2, 3] }&#10;&#10;…or drop a .json file anywhere on this page.'></textarea>
+            placeholder='Paste JSON here — even broken JSON…&#10;&#10;{ "hello": "world", "items": [1, 2, 3] }&#10;&#10;…or drop a .json file anywhere on this page.'></textarea>
 
           <div class="file-chip" id="file-chip" hidden>
             <div class="file-chip-icon" aria-hidden="true">📄</div>
@@ -142,15 +152,36 @@
           <h2 id="output-title">Formatted</h2>
           <span class="meta" id="output-meta"></span>
           <div class="panel-actions">
+            <div class="view-switch" id="view-switch" role="group" aria-label="Output view" hidden>
+              <button type="button" class="view-option" id="view-text" aria-pressed="true">Text</button>
+              <button type="button" class="view-option" id="view-tree" aria-pressed="false">Tree</button>
+            </div>
             <button type="button" class="btn btn-ghost" id="wrap-btn" aria-pressed="true"
               title="Wrap long lines in both panels instead of scrolling sideways">Wrap</button>
             <button type="button" class="btn btn-ghost" id="copy-btn" disabled>Copy</button>
             <button type="button" class="btn btn-ghost" id="download-btn" disabled>Download .json</button>
+            <button type="button" class="btn btn-ghost" id="share-btn" disabled
+              title="Copy a link that contains your input. The data lives inside the link itself — nothing is uploaded, but anyone you send it to can read it.">Share link</button>
           </div>
         </div>
 
         <div class="panel-body">
           <pre class="output" id="output" tabindex="0" aria-label="Formatted output"><code id="output-code"></code></pre>
+
+          <div class="tree-view" id="tree-view" hidden>
+            <div class="tree-bar">
+              <svg viewBox="0 0 24 24" aria-hidden="true" width="15" height="15"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <input type="search" id="tree-search" placeholder="Search keys and values…" aria-label="Search keys and values"
+                spellcheck="false" autocomplete="off">
+              <span class="meta" id="tree-count" role="status"></span>
+            </div>
+            <ul class="tree" id="tree-list" role="tree" aria-label="JSON tree"></ul>
+            <div class="tree-path" id="tree-path" hidden>
+              <code id="tree-path-text"></code>
+              <button type="button" class="btn btn-ghost btn-tiny" id="tree-copy-path">Copy path</button>
+              <button type="button" class="btn btn-ghost btn-tiny" id="tree-copy-value">Copy value</button>
+            </div>
+          </div>
 
           <div class="csv-view" id="csv-view" tabindex="0" aria-label="CSV preview" hidden>
             <table class="csv-table" id="csv-table">
@@ -182,6 +213,16 @@
             <p class="error-message" id="error-message"></p>
             <pre class="error-snippet" id="error-snippet" hidden></pre>
             <button type="button" class="btn btn-ghost error-jump" id="jump-btn" hidden>Show me in the input</button>
+          </div>
+
+          <div class="repair-note" id="repair-note" role="status" hidden>
+            <div class="repair-head">
+              <svg viewBox="0 0 24 24" aria-hidden="true" width="16" height="16"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.1L4 16.7V20h3.3l5.3-5.3a4 4 0 0 0 5.1-5.4l-2.5 2.5-2.4-.6-.6-2.4 2.5-2.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+              <strong id="repair-title">That wasn’t valid JSON — so it was repaired</strong>
+              <button type="button" class="repair-dismiss" id="repair-dismiss" aria-label="Hide the list of repairs">×</button>
+            </div>
+            <ul class="repair-list" id="repair-list"></ul>
+            <button type="button" class="btn btn-ghost repair-apply" id="repair-apply">Put the fixed JSON in the input</button>
           </div>
 
           <div class="truncation-note" id="truncation-note" hidden>

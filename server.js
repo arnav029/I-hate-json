@@ -134,8 +134,11 @@ function baseHeaders(req, forWorker) {
  * are recomputed when a file's mtime moves, which keeps edit-and-reload working
  * without introducing a build step.
  */
-const CORES = ['formatter.js', 'csv.js', 'diff.js'];
+const CORES = ['formatter.js', 'repair.js', 'csv.js', 'diff.js'];
 const WORKER_ASSETS = ['format-worker.js'].concat(CORES);
+// Fetched by the page itself, but only once a feature needs them.
+const LAZY_ASSETS = ['tree.js', 'share.js'];
+const VERSIONED_ASSETS = WORKER_ASSETS.concat(LAZY_ASSETS);
 
 const versions = new Map();
 
@@ -162,11 +165,11 @@ function versioned(name) {
   return digest ? name + '?v=' + digest : name;
 }
 
-// Handed to the page as one attribute so app.js can version the worker, and the
-// worker can version its own importScripts — no inline script, so the CSP above
-// needs no nonce and no 'unsafe-inline'.
+// Handed to the page as one attribute so app.js can version the worker and its
+// lazy scripts, and the worker can version its own importScripts — no inline
+// script, so the CSP above needs no nonce and no 'unsafe-inline'.
 function assetManifest() {
-  return WORKER_ASSETS
+  return VERSIONED_ASSETS
     .map(function (name) { return name + ':' + assetVersion(name); })
     .filter(function (pair) { return !/:$/.test(pair); })
     .join(',');
@@ -186,7 +189,7 @@ function precacheManifest() {
   // served no-cache precisely so this can reach people.
   if (process.env.SW_DISABLED) return { version: 'off', precache: [], disabled: true };
 
-  const assets = ['styles.css', 'app.js'].concat(WORKER_ASSETS);
+  const assets = ['styles.css', 'app.js'].concat(VERSIONED_ASSETS);
   const digests = assets.map(assetVersion);
 
   return {

@@ -23,8 +23,8 @@ const DIST = path.join(__dirname, 'dist');
 
 // Everything the browser is meant to reach. index.html is a template rendered
 // per route, and sw.js needs its precache list substituted, so neither is copied.
-const ASSETS = ['styles.css', 'app.js', 'format-worker.js', 'formatter.js', 'csv.js',
-  'diff.js', 'manifest.webmanifest'];
+const ASSETS = ['styles.css', 'app.js', 'format-worker.js', 'formatter.js', 'repair.js',
+  'csv.js', 'diff.js', 'tree.js', 'share.js', 'manifest.webmanifest'];
 const ASSET_DIRS = ['og', 'icons'];
 
 function write(relative, contents) {

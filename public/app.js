@@ -46,7 +46,7 @@
     return ASSETS[name] ? name + '?v=' + ASSETS[name] : name;
   }
 
-  var CORES = ['formatter.js', 'csv.js', 'diff.js'];
+  var CORES = ['formatter.js', 'repair.js', 'csv.js', 'diff.js'];
 
   // The worker cannot read the document, so core versions ride along on each job
   // message. Keeping them off the worker's own URL leaves it with a single
@@ -81,9 +81,26 @@
     errorSnippet: $('error-snippet'),
     jumpBtn: $('jump-btn'),
     truncation: $('truncation-note'),
+    repairNote: $('repair-note'),
+    repairTitle: $('repair-title'),
+    repairList: $('repair-list'),
+    repairApply: $('repair-apply'),
+    repairDismiss: $('repair-dismiss'),
     formatBtn: $('format-btn'),
     formatBtnLabel: $('format-btn-label'),
     copyBtn: $('copy-btn'),
+    shareBtn: $('share-btn'),
+    viewSwitch: $('view-switch'),
+    viewText: $('view-text'),
+    viewTree: $('view-tree'),
+    treeView: $('tree-view'),
+    treeSearch: $('tree-search'),
+    treeCount: $('tree-count'),
+    treeList: $('tree-list'),
+    treePath: $('tree-path'),
+    treePathText: $('tree-path-text'),
+    treeCopyPath: $('tree-copy-path'),
+    treeCopyValue: $('tree-copy-value'),
     wrapBtn: $('wrap-btn'),
     downloadBtn: $('download-btn'),
     clearBtn: $('clear-btn'),
@@ -109,13 +126,53 @@
     errorEditor: null,   // which editor that range belongs to
     truncated: false,    // preview shows less than the full output
     busy: false,
-    requestId: 0
+    requestId: 0,
+    sources: null,       // what produced the current output, for Share
+    view: 'text',        // 'text' or 'tree', on modules that offer both
+    tree: null,          // the mounted tree controller, if any
+    treeSelection: null  // {path, value} of the chosen row
   };
 
   var EXAMPLE = '{"name":"i-hate-json","version":"1.0.0","private":true,' +
     '"tagline":"Paste JSON. Get it formatted.","limits":{"maxFileSizeMB":50,"indent":2},' +
     '"features":["pretty-print","drag & drop","copy","download"],' +
     '"runsOnServer":false,"stars":null,"score":9.5}';
+
+  // What a chat assistant hands back when asked for JSON, more or less verbatim:
+  // every line of it is something JSON.parse rejects.
+  var BROKEN_EXAMPLE = [
+    'Sure! Here is the user record you asked for:',
+    '',
+    '```json',
+    '{',
+    '  // pulled from the staging API',
+    "  name: 'Ada Lovelace',",
+    '  "active": True,',
+    '  "roles": ["admin", "editor",],',
+    '  "manager": None,',
+    '  "bio": "Wrote the first "program" in 1843",',
+    '  "lastLogin": ISODate("2026-10-30T09:12:00Z"),',
+    '  "score": NaN,',
+    '}',
+    '```',
+    '',
+    'Let me know if you need anything else!'
+  ].join('\n');
+
+  // Nested enough that the tree view has something to show.
+  var VIEWER_EXAMPLE = JSON.stringify({
+    status: 'ok',
+    page: { number: 1, size: 3, total: 1284 },
+    users: [
+      { id: 101, name: 'Ada Lovelace', email: 'ada@example.com', roles: ['admin', 'author'],
+        address: { city: 'London', country: 'GB' }, active: true, lastLogin: '2026-10-29T18:04:11Z' },
+      { id: 102, name: 'Grace Hopper', email: 'grace@example.com', roles: ['author'],
+        address: { city: 'New York', country: 'US' }, active: true, lastLogin: null },
+      { id: 103, name: 'Alan Turing', email: 'alan@example.com', roles: [],
+        address: { city: 'Manchester', country: 'GB' }, active: false, lastLogin: '2026-09-02T07:30:00Z' }
+    ],
+    links: { self: '/users?page=1', next: '/users?page=2' }
+  });
 
   var CSV_EXAMPLE = '[{"id":1,"name":"Ada Lovelace","role":"engineer",' +
     '"address":{"city":"London","zip":"W1"},"tags":["math","first"]},' +
@@ -224,6 +281,59 @@
       example: function () { el.input.value = EXAMPLE; },
       inputs: mainInput,
       wrappable: true,
+      fixesInPlace: true,
+      treeable: true,
+      view: el.outputPre,
+      text: function (result) { return result.formatted; },
+      render: renderFormatted,
+      meta: function (stats) {
+        return formatNumber(stats.lines) + ' lines · ' + formatBytes(stats.outputBytes) + ' · ' + stats.ms + 'ms';
+      },
+      note: function () {
+        return 'Preview truncated for speed — the full document is intact. Use Copy or Download to get all of it.';
+      }
+    },
+
+    viewer: {
+      mode: 'format',
+      title: 'Viewer',
+      action: 'View',
+      download: 'Download .json',
+      extension: '.formatted.json',
+      mime: 'application/json',
+      tagline: 'Paste JSON. Explore it as a tree. Nothing leaves your browser.',
+      placeholder: ['Your JSON will appear here as a tree.', 'Open and close nodes, search keys and values, click any value to copy its path.'],
+      example: function () { el.input.value = VIEWER_EXAMPLE; },
+      inputs: mainInput,
+      wrappable: true,
+      fixesInPlace: true,
+      treeable: true,
+      defaultView: 'tree',
+      view: el.outputPre,
+      text: function (result) { return result.formatted; },
+      render: renderFormatted,
+      meta: function (stats) {
+        return formatNumber(stats.lines) + ' lines · ' + formatBytes(stats.outputBytes) + ' · ' + stats.ms + 'ms';
+      },
+      note: function () {
+        return 'Preview truncated for speed — the full document is intact. Use Copy or Download to get all of it.';
+      }
+    },
+
+    repair: {
+      mode: 'format',
+      title: 'Repaired',
+      action: 'Fix JSON',
+      download: 'Download .json',
+      extension: '.fixed.json',
+      mime: 'application/json',
+      tagline: 'Paste broken JSON. Get valid JSON back. Nothing leaves your browser.',
+      placeholder: ['Your repaired JSON will appear here.', 'Trailing commas, quotes, comments, cut-off output — fixed, with every change listed.'],
+      example: function () { el.input.value = BROKEN_EXAMPLE; },
+      inputs: mainInput,
+      wrappable: true,
+      fixesInPlace: true,
+      treeable: true,
       view: el.outputPre,
       text: function (result) { return result.formatted; },
       render: renderFormatted,
@@ -247,6 +357,7 @@
       example: function () { el.input.value = JSON.stringify(JSON.parse(EXAMPLE), null, 2); },
       inputs: mainInput,
       wrappable: true,
+      fixesInPlace: true,
       view: el.outputPre,
       text: function (result) { return result.minified; },
       render: renderFormatted,
@@ -331,7 +442,8 @@
     el.outputTitle.textContent = module.title;
     el.formatBtnLabel.textContent = module.action;
     el.downloadBtn.textContent = module.download;
-    el.wrapBtn.hidden = !module.wrappable;
+    el.viewSwitch.hidden = !module.treeable;
+    applyView();
 
     el.diffInputs.hidden = !module.twoUp;
     el.input.hidden = !!module.twoUp;
@@ -422,15 +534,19 @@
     el.diffBody.innerHTML = '';
     el.diffIdentical.hidden = true;
     el.outputMeta.textContent = '';
-    [el.outputPre, el.csvView, el.diffView].forEach(function (view) {
-      view.hidden = view !== module.view;
+    resetTree();
+    var active = activeView();
+    [el.outputPre, el.treeView, el.csvView, el.diffView].forEach(function (view) {
+      view.hidden = view !== active;
     });
     el.placeholderText.textContent = module.placeholder[0];
     el.placeholderSub.textContent = module.placeholder[1];
     el.placeholder.hidden = false;
     el.truncation.hidden = true;
+    el.repairNote.hidden = true;
     el.copyBtn.disabled = true;
     el.downloadBtn.disabled = true;
+    el.shareBtn.disabled = true;
   }
 
   function hideError() {
@@ -481,6 +597,7 @@
   }
 
   var ERROR_TITLES = {
+    share: 'That share link didn’t open',
     empty: 'Nothing to work with',
     'too-big': 'That file is too large',
     read: 'Couldn’t read that file',
@@ -615,6 +732,41 @@
     return span;
   }
 
+  /*
+   * Repair is never silent: whatever was changed to make the input parse is
+   * listed, with the line it first happened on, so nobody ships a "fixed"
+   * document without knowing what the fix was.
+   */
+  function renderRepairs(repairs) {
+    var module = current();
+    if (!repairs || !repairs.length) return;
+
+    var onlyUnwrapped = repairs.length === 1 && repairs[0].kind === 'unwrapped';
+    el.repairTitle.textContent = onlyUnwrapped
+      ? 'This was JSON stored inside a string — unwrapped it'
+      : 'That wasn’t valid JSON — so it was repaired';
+
+    var list = document.createDocumentFragment();
+    repairs.forEach(function (repair) {
+      var li = document.createElement('li');
+      li.textContent = repair.message;
+      if (repair.line > 1) {
+        var line = document.createElement('span');
+        line.className = 'repair-line';
+        line.textContent = ' · line ' + formatNumber(repair.line);
+        li.appendChild(line);
+      }
+      list.appendChild(li);
+    });
+    el.repairList.innerHTML = '';
+    el.repairList.appendChild(list);
+
+    // Only offered where the output is JSON and small enough to edit.
+    el.repairApply.hidden = !module.fixesInPlace || !!state.pendingFile ||
+      state.output.length > INLINE_FILE_LIMIT;
+    el.repairNote.hidden = false;
+  }
+
   function showResult(result) {
     var module = current();
 
@@ -632,8 +784,16 @@
     el.truncation.hidden = !state.truncated;
     el.copyBtn.disabled = false;
     el.downloadBtn.disabled = false;
+    el.shareBtn.disabled = false;
     el.outputMeta.textContent = module.meta(result.stats);
-    announce(module.title + ' ready. ' + el.outputMeta.textContent);
+    if (treeActive()) {
+      // The text preview is truncated for big documents; the tree is not.
+      el.truncation.hidden = true;
+      renderTree();
+    }
+    renderRepairs(result.repairs);
+    announce(module.title + ' ready. ' + el.outputMeta.textContent +
+      (result.repairs && result.repairs.length ? '. ' + el.repairTitle.textContent + '.' : ''));
   }
 
   function setBusy(busy, stage) {
@@ -729,6 +889,7 @@
     var reading = sources.some(function (source) { return source.source === 'file'; });
 
     hideError();
+    state.sources = sources;
     state.requestId++;
     setBusy(true, reading ? STAGE_LABEL.reading : STAGE_LABEL.parsing);
 
@@ -776,7 +937,12 @@
   }
 
   function loadCores(done) {
-    var globals = { 'formatter.js': 'JSONFormatterCore', 'csv.js': 'JSONCsvCore', 'diff.js': 'JSONDiffCore' };
+    var globals = {
+      'formatter.js': 'JSONFormatterCore',
+      'repair.js': 'JSONRepairCore',
+      'csv.js': 'JSONCsvCore',
+      'diff.js': 'JSONDiffCore'
+    };
     var pending = CORES.filter(function (src) { return !self[globals[src]]; });
 
     if (!pending.length) { done(); return; }
@@ -831,10 +997,13 @@
 
   function copyOutput() {
     if (!state.output) return;
+    copyText(state.output, 'Copied to clipboard');
+  }
 
+  function copyText(text, done) {
     var fallback = function () {
       var scratch = document.createElement('textarea');
-      scratch.value = state.output;
+      scratch.value = text;
       scratch.setAttribute('readonly', '');
       scratch.style.position = 'fixed';
       scratch.style.opacity = '0';
@@ -843,12 +1012,12 @@
       var ok = false;
       try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
       document.body.removeChild(scratch);
-      toast(ok ? 'Copied to clipboard' : 'Copy failed — select the output manually');
+      toast(ok ? done : 'Copy failed — your browser blocked the clipboard');
     };
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(state.output).then(function () {
-        toast('Copied to clipboard');
+      navigator.clipboard.writeText(text).then(function () {
+        toast(done);
       }, fallback);
     } else {
       fallback();
@@ -873,6 +1042,236 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     toast('Downloading ' + link.download);
   }
+
+  /* ── on-demand scripts ───────────────────────────────── */
+
+  // The tree and share code is only fetched when first needed, so the page
+  // everyone lands on stays as small as it was.
+  var lazy = {};
+
+  function loadScript(name) {
+    if (!lazy[name]) {
+      lazy[name] = new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+        script.src = assetUrl(name);
+        script.onload = resolve;
+        script.onerror = function () {
+          delete lazy[name];
+          reject({ kind: 'unknown', message: 'Could not load part of the page. Check your connection and try again.' });
+        };
+        document.head.appendChild(script);
+      });
+    }
+    return lazy[name];
+  }
+
+  /* ── tree view ───────────────────────────────────────── */
+
+  var VIEW_KEY = 'ihj:view';
+  var TREE_LIMIT = 25 * 1024 * 1024;       // above this, parsing on the main thread would stall the page
+  var LIVE_SEARCH_LIMIT = 2 * 1024 * 1024; // above this, search waits for Enter
+
+  function treeActive() {
+    return !!current().treeable && state.view === 'tree';
+  }
+
+  function activeView() {
+    return treeActive() ? el.treeView : current().view;
+  }
+
+  function applyView() {
+    var module = current();
+    var tree = treeActive();
+    el.viewText.setAttribute('aria-pressed', tree ? 'false' : 'true');
+    el.viewTree.setAttribute('aria-pressed', tree ? 'true' : 'false');
+    el.wrapBtn.hidden = !module.wrappable || tree;
+  }
+
+  function setView(view) {
+    if (state.view === view) return;
+    state.view = view;
+    // The viewer page always opens on the tree; elsewhere the choice sticks.
+    if (!current().defaultView) {
+      try { localStorage.setItem(VIEW_KEY, view); } catch (err) { /* private mode */ }
+    }
+    applyView();
+
+    var active = activeView();
+    [el.outputPre, el.treeView].forEach(function (view) { view.hidden = view !== active; });
+
+    if (view === 'tree') {
+      el.truncation.hidden = true;
+      if (state.output) renderTree();
+    } else {
+      resetTree();
+      el.truncation.hidden = !state.truncated;
+    }
+  }
+
+  function initialView() {
+    var module = current();
+    if (module.defaultView) return module.defaultView;
+    try {
+      return localStorage.getItem(VIEW_KEY) === 'tree' ? 'tree' : 'text';
+    } catch (err) {
+      return 'text';
+    }
+  }
+
+  function resetTree() {
+    if (state.tree) state.tree.destroy();
+    state.tree = null;
+    state.treeSelection = null;
+    el.treeList.textContent = '';
+    el.treeCount.textContent = '';
+    el.treePath.hidden = true;
+  }
+
+  function renderTree() {
+    resetTree();
+    if (!state.output) return;
+
+    if (state.output.length > TREE_LIMIT) {
+      el.treeCount.textContent = 'Too big for the tree view (over 25MB) — switch to Text.';
+      return;
+    }
+
+    var output = state.output;
+    loadScript('tree.js').then(function () {
+      if (output !== state.output || !treeActive() || state.tree) return; // superseded meanwhile
+      var value;
+      try {
+        value = JSON.parse(output);
+      } catch (err) {
+        el.treeCount.textContent = 'The tree view could not read this output.';
+        return;
+      }
+      state.tree = self.JSONTree.mount(el.treeList, value, onTreeSelect);
+      if (el.treeSearch.value.trim()) runTreeSearch();
+    }, function (err) {
+      el.treeCount.textContent = err.message;
+    });
+  }
+
+  function onTreeSelect(path, value) {
+    state.treeSelection = { path: path, value: value };
+    el.treePathText.textContent = self.JSONTree.formatPath(path) || '(root)';
+    el.treePath.hidden = false;
+  }
+
+  function runTreeSearch() {
+    if (!state.tree) return;
+    var result = state.tree.filter(el.treeSearch.value);
+    state.treeSelection = null;
+    el.treePath.hidden = true;
+
+    if (!result) { el.treeCount.textContent = ''; return; }
+    if (!result.total) { el.treeCount.textContent = 'No matches'; return; }
+    el.treeCount.textContent = result.capped
+      ? formatNumber(result.total) + ' matches · showing ' + formatNumber(result.matches.length)
+      : formatNumber(result.total) + (result.total === 1 ? ' match' : ' matches');
+  }
+
+  var searchTimer = null;
+
+  el.treeSearch.addEventListener('input', function () {
+    clearTimeout(searchTimer);
+    var query = el.treeSearch.value.trim();
+    if (state.output.length > LIVE_SEARCH_LIMIT && query) {
+      el.treeCount.textContent = 'Press Enter to search';
+      return;
+    }
+    searchTimer = setTimeout(runTreeSearch, 150);
+  });
+
+  el.treeSearch.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    clearTimeout(searchTimer);
+    runTreeSearch();
+  });
+
+  el.viewText.addEventListener('click', function () { setView('text'); });
+  el.viewTree.addEventListener('click', function () { setView('tree'); });
+
+  el.treeCopyPath.addEventListener('click', function () {
+    if (!state.treeSelection) return;
+    copyText(self.JSONTree.formatPath(state.treeSelection.path) || '$', 'Path copied');
+  });
+
+  el.treeCopyValue.addEventListener('click', function () {
+    var selection = state.treeSelection;
+    if (!selection) return;
+    // A string is copied as its text; anything else as JSON.
+    var value = selection.value;
+    copyText(typeof value === 'string' ? value : JSON.stringify(value, null, 2), 'Value copied');
+  });
+
+  /* ── share links ─────────────────────────────────────── */
+
+  var SHARE_LIMIT = 64 * 1024;              // past this a link stops being pasteable into a chat
+  var SHARE_READ_LIMIT = 20 * 1024 * 1024;  // no point reading a file that cannot fit anyway
+
+  function sourceText(source) {
+    if (source.source !== 'file') return Promise.resolve(source.text);
+    if (source.file.size > SHARE_READ_LIMIT) return Promise.reject({ tooBig: true });
+    return source.file.text();
+  }
+
+  function shareLink() {
+    var sources = state.sources;
+    if (!sources) return;
+
+    loadScript('share.js').then(function () {
+      if (!self.JSONShare.supported()) {
+        toast('This browser can’t make share links — try a current Chrome, Firefox or Safari');
+        return null;
+      }
+      return Promise.all(sources.map(sourceText)).then(self.JSONShare.encode).then(function (fragment) {
+        if (fragment.length > SHARE_LIMIT) {
+          toast('Too big for a link (' + formatBytes(fragment.length) + ' compressed, limit ' +
+            formatBytes(SHARE_LIMIT) + ') — use Download instead');
+          return;
+        }
+        copyText(location.origin + location.pathname + '#' + fragment,
+          'Link copied — the JSON is inside the link, so anyone you send it to can read it');
+      });
+    }).catch(function (err) {
+      toast(err && err.tooBig ? 'Too big for a link — use Download instead'
+        : 'Couldn’t make a link: ' + (err && err.message ? err.message : err));
+    });
+  }
+
+  // Opening a shared link fills the input from the fragment and runs. The
+  // fragment is then dropped from the address bar so a later edit is not
+  // overwritten by it on reload — sessionStorage carries the input from there.
+  function openShared() {
+    if (!/^#share=/.test(location.hash)) return;
+    var hash = location.hash;
+
+    loadScript('share.js').then(function () {
+      return self.JSONShare.decode(hash);
+    }).then(function (texts) {
+      history.replaceState(null, '', location.pathname + location.search);
+      clearFileChip();
+      if (current().twoUp) {
+        clearPaneFile(panes.a);
+        clearPaneFile(panes.b);
+        panes.a.text.value = texts[0];
+        panes.b.text.value = texts[1] || '';
+      } else {
+        el.input.value = texts[0];
+      }
+      state.sourceName = 'shared';
+      updateInputMeta();
+      run();
+    }, function (err) {
+      showError(err && err.kind ? err : { kind: 'share', message: String(err) });
+    });
+  }
+
+  el.shareBtn.addEventListener('click', shareLink);
+  window.addEventListener('hashchange', openShared);
 
   /* ── carrying input between tools ────────────────────── */
 
@@ -983,6 +1382,17 @@
 
   el.jumpBtn.addEventListener('click', markError);
 
+  el.repairApply.addEventListener('click', function () {
+    el.input.value = state.output;
+    el.repairNote.hidden = true;
+    updateInputMeta();
+    toast('Fixed JSON is in the input');
+  });
+
+  el.repairDismiss.addEventListener('click', function () {
+    el.repairNote.hidden = true;
+  });
+
   function selectOutput() {
     var node = current().view === el.csvView ? el.csvView : el.outputCode;
     var range = document.createRange();
@@ -1007,7 +1417,7 @@
       return;
     }
 
-    if ((event.key || '').toLowerCase() === 'a' && state.output && ownsSelectAll(event.target)) {
+    if ((event.key || '').toLowerCase() === 'a' && state.output && !treeActive() && ownsSelectAll(event.target)) {
       event.preventDefault();
       current().view.focus({ preventScroll: true });
       selectOutput();
@@ -1057,9 +1467,11 @@
   /* ── init ────────────────────────────────────────────── */
 
   setWrap(initialWrap());
+  state.view = initialView();
   applyModule();
   restoreInput();
   clearOutput();
+  openShared();
   getWorker();
 
   /* ── offline ─────────────────────────────────────────── */

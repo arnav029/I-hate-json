@@ -205,6 +205,7 @@ body {
 
 .panel-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 10px 12px 10px 16px;
@@ -233,6 +234,8 @@ body {
 .panel-actions {
   margin-left: auto;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
   flex-shrink: 0;
 }
@@ -722,6 +725,209 @@ textarea#input.marked::selection {
 
 .truncation-note[hidden] { display: none; }
 .truncation-note strong { color: var(--text); }
+
+/* ── Text / Tree switch ─────────────────────────────────── */
+.view-switch {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-sunken);
+}
+
+.view-switch[hidden] { display: none; }
+
+.view-option {
+  border: 0;
+  background: none;
+  color: var(--text-soft);
+  font: 600 12.5px var(--sans);
+  padding: 4px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.view-option:hover { color: var(--text); }
+.view-option[aria-pressed="true"] { background: var(--bg-panel); color: var(--text); box-shadow: var(--shadow); }
+.view-option:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ── Tree view ──────────────────────────────────────────── */
+.tree-view {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sunken);
+}
+
+.tree-view[hidden] { display: none; }
+
+.tree-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+}
+
+.tree-bar input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: 13px var(--sans);
+  padding: 4px 0;
+}
+
+.tree-bar input:focus { outline: none; }
+.tree-bar:focus-within { box-shadow: inset 0 -2px 0 var(--accent); }
+
+.tree {
+  flex: 1;
+  margin: 0;
+  padding: 10px 8px 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 18px;
+  border-left: 1px solid var(--border);
+  margin-left: 7px;
+}
+
+.tree-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  padding: 0 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tree-row:hover { background: var(--bg-hover); }
+.tree-row:focus { outline: none; }
+.tree-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tree-row.is-selected { background: var(--accent-soft); }
+.tree-row.is-hit { background: color-mix(in srgb, var(--tok-num) 10%, transparent); }
+.tree-row.is-hit.is-selected { background: var(--accent-soft); }
+
+.tree-caret {
+  flex: none;
+  width: 16px;
+  color: var(--text-faint);
+  font-size: 10px;
+  transition: transform .12s;
+}
+
+.tree-caret::before { content: "▶"; }
+.tree-caret.is-leaf::before { content: ""; }
+[aria-expanded="true"] > .tree-row > .tree-caret { transform: rotate(90deg); }
+
+.tree-key { color: var(--tok-key); }
+.tree-index { color: var(--text-faint); }
+.tree-colon { color: var(--text-faint); white-space: pre; }
+.tree-summary { color: var(--text-faint); font-style: italic; }
+.tree-row .tok-str { overflow: hidden; text-overflow: ellipsis; }
+
+.tree mark {
+  background: color-mix(in srgb, var(--tok-num) 30%, transparent);
+  color: inherit;
+  border-radius: 3px;
+}
+
+.tree-more { padding: 4px 0 4px 22px; }
+
+.tree-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.tree-path[hidden] { display: none; }
+
+.tree-path code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+/* ── Repair notice ──────────────────────────────────────── */
+.repair-note {
+  position: absolute;
+  left: 12px; right: 12px; bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--tok-str) 35%, transparent);
+  background: color-mix(in srgb, var(--tok-str) 9%, var(--bg-panel));
+  color: var(--tok-str);
+  box-shadow: var(--shadow);
+  max-height: 45%;
+  overflow: auto;
+}
+
+.repair-note[hidden] { display: none; }
+
+.repair-head { display: flex; align-items: center; gap: 7px; font-size: 13.5px; }
+.repair-head strong { flex: 1; }
+
+.repair-dismiss {
+  border: 0;
+  background: none;
+  color: var(--text-soft);
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.repair-dismiss:hover { background: var(--bg-hover); color: var(--text); }
+.repair-dismiss:focus-visible { outline: 2px solid var(--accent); }
+
+.repair-list {
+  margin: 8px 0 0;
+  padding: 0 0 0 18px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.repair-list .repair-line {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.repair-apply {
+  margin-top: 10px;
+  background: var(--bg-panel);
+  border-color: color-mix(in srgb, var(--tok-str) 45%, transparent);
+  color: var(--tok-str);
+}
+
+.repair-apply[hidden] { display: none; }
+
+.repair-apply:hover:not(:disabled) {
+  background: var(--tok-str);
+  color: var(--bg-panel);
+}
 
 /* ── Drag & drop ────────────────────────────────────────── */
 .drop-overlay {

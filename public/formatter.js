@@ -255,28 +255,47 @@
   }
 
   /**
-   * Parse + pretty-print. Throws a plain object (not an Error) describing the
-   * failure so it survives structured cloning back to the main thread.
+   * Throws a plain object (not an Error) describing the failure so it survives
+   * structured cloning back to the main thread.
+   *
+   * Passing `repairs` (an array) opts in to repair: broken input that the
+   * repair core can fix parses anyway, and what it changed is pushed onto the
+   * array. Without the repair core loaded, it behaves exactly as before.
    */
-  function parse(text) {
+  function parse(text, repairs) {
     if (text.trim() === '') {
       throw { kind: 'empty', message: 'Nothing here yet — paste some JSON or drop a file in.' };
     }
+    var repairCore = repairs && global.JSONRepairCore;
+    var value;
     try {
-      return JSON.parse(text);
+      value = JSON.parse(text);
     } catch (err) {
-      var detail = describeParseError(err, text);
-      detail.kind = 'parse';
-      throw detail;
+      var fixed = repairCore ? repairCore.repair(text) : null;
+      if (fixed) {
+        try {
+          value = JSON.parse(fixed.text);
+          Array.prototype.push.apply(repairs, fixed.fixes);
+        } catch (stillBroken) {
+          fixed = null;
+        }
+      }
+      if (!fixed) {
+        var detail = describeParseError(err, text);
+        detail.kind = 'parse';
+        throw detail;
+      }
     }
+    return repairCore ? repairCore.unwrap(value, repairs) : value;
   }
 
   function format(text, opts) {
     var indent = (opts && opts.indent) || 2;
     var onStage = (opts && opts.onStage) || function () {};
+    var repairs = [];
 
     onStage('parsing');
-    var parsed = parse(text);
+    var parsed = parse(text, repairs);
 
     onStage('formatting');
     var formatted = JSON.stringify(parsed, null, indent);
@@ -288,6 +307,7 @@
       formatted: formatted,
       previewHtml: highlight(preview.text),
       truncated: preview.truncated,
+      repairs: repairs,
       stats: {
         inputBytes: utf8ByteLength(text),
         outputBytes: utf8ByteLength(formatted),
@@ -298,9 +318,10 @@
 
   function minify(text, opts) {
     var onStage = (opts && opts.onStage) || function () {};
+    var repairs = [];
 
     onStage('parsing');
-    var parsed = parse(text);
+    var parsed = parse(text, repairs);
 
     onStage('minifying');
     var minified = JSON.stringify(parsed);
@@ -314,6 +335,7 @@
       minified: minified,
       previewHtml: highlight(preview.text),
       truncated: preview.truncated,
+      repairs: repairs,
       stats: {
         inputBytes: inputBytes,
         outputBytes: outputBytes,

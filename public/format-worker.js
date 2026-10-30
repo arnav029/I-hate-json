@@ -12,11 +12,12 @@
  */
 'use strict';
 
-// Every mode parses, and parsing lives in the formatter core.
+// Every mode parses, and parsing lives in the formatter core. Repair is left
+// out of diff: quietly fixing one side of a comparison would hide differences.
 var NEEDS = {
-  format: ['formatter.js'],
-  minify: ['formatter.js'],
-  csv: ['formatter.js', 'csv.js'],
+  format: ['formatter.js', 'repair.js'],
+  minify: ['formatter.js', 'repair.js'],
+  csv: ['formatter.js', 'repair.js', 'csv.js'],
   diff: ['formatter.js', 'diff.js']
 };
 

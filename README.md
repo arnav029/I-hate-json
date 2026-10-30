@@ -14,6 +14,8 @@ through `sessionStorage` (capped at 100KB; files are never persisted).
 | URL | Module |
 | --- | --- |
 | `/` | Formatter |
+| `/json-viewer` | Viewer — the formatter, opening on the tree |
+| `/fix-json` | Fix — the formatter, pitched at broken input |
 | `/json-to-csv` | CSV |
 | `/json-minifier` | Minify |
 | `/json-diff` | Diff |
@@ -21,13 +23,51 @@ through `sessionStorage` (capped at 100KB; files are never persisted).
 
 | Module | Does |
 | --- | --- |
-| Formatter | Pretty-prints with a 2-space indent, syntax highlighted |
+| Formatter | Pretty-prints with a 2-space indent, syntax highlighted; Text or Tree view |
+| Viewer | Collapsible tree with search and copyable paths |
+| Fix | Repairs broken JSON and lists every change it made |
 | CSV | Converts an array of objects to CSV — union of all keys, nested keys as dotted columns |
 | Minify | Strips every optional byte, reporting how much smaller the result is |
 | Diff | Compares two documents structurally and lists what changed |
 | TypeScript | Listed as coming soon, not clickable |
 
 Adding a module means one `MODULES` entry in `app.js` and one mode in the worker.
+
+### Repair specifics
+
+- Runs only after `JSON.parse` has failed, so valid documents never pay for it; used by
+  Formatter, Viewer, Fix, Minify and CSV, deliberately not by Diff (fixing one side of a
+  comparison would hide differences)
+- Handles chat-assistant replies (prose, code fences, cut-off output), trailing / missing /
+  doubled commas, single and curly quotes, bare keys and values, comments, Python and JS
+  literals, `NaN`/`Infinity`, Mongo shell wrappers, hex and other non-JSON numbers, raw
+  control characters, invalid escapes, mismatched brackets, NDJSON, and JSON stored as a string
+- Every change is reported with the line it first happened on — nothing is altered silently
+- Gives up rather than guess when the input stops looking like structured data
+
+### Tree specifics
+
+- Text / Tree switch on the formatter-family pages; the choice is remembered, and `/json-viewer`
+  always opens on the tree
+- Renders lazily: children appear when their parent opens, 200 at a time, and are discarded
+  when it closes — a 20MB document shows its tree in about 100ms
+- Search matches object keys and scalar values case-insensitively (never bare array indices),
+  narrows the tree to the matching branches, and caps revealed matches at 1,000. Above 2MB it
+  waits for Enter instead of searching on every keystroke
+- Choosing a row shows its path (`users[3].address.city`, `["content-type"]`) with Copy path and
+  Copy value; arrow keys navigate like a file explorer
+- Up to 25MB, since the tree parses the output on the main thread
+
+### Share links
+
+- **Share link** deflates the module's inputs (`CompressionStream('deflate-raw')`) into the URL
+  fragment: `/json-viewer#share=1.<base64url>`. Fragments are never sent in a request, so the link
+  carries the data and the server never sees it — there is no stored copy anywhere
+- Capped at 64KB of fragment (typically a few hundred KB of JSON); bigger documents are told to
+  use Download
+- Opening a link decodes it, refuses anything that would inflate past 50MB, fills the input(s),
+  runs, and drops the fragment from the address bar
+- What is shared is the input, so the recipient sees the same repairs and the same result
 
 ### Diff specifics
 
@@ -60,7 +100,7 @@ Adding a module means one `MODULES` entry in `app.js` and one mode in the worker
   selected instead and the message says "near line N"
 - Long values soft-wrap in both panels (toggleable, remembered per browser)
 
-Still out of scope: tree view, key search, schema validation, JSON to TypeScript.
+Still out of scope: schema validation, JSON to TypeScript.
 
 ## Why it does not freeze on big files
 
@@ -85,8 +125,11 @@ public/           everything the browser gets
   app.js          UI wiring + module registry
   format-worker.js  worker shell, dispatches by mode
   formatter.js    pure parse/format/highlight core (no DOM — testable in Node)
+  repair.js       pure broken-JSON repair core (no DOM)
   csv.js          pure JSON -> CSV core (no DOM)
   diff.js         pure structural diff core (no DOM)
+  tree.js         tree view; loaded on first use (search and paths are DOM-free)
+  share.js        share-link encode/decode; loaded on first use (no DOM)
   sw.js           service worker; its precache list is filled in at serve time
   manifest.webmanifest
   og/             1200×630 social cards, one per route
